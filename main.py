@@ -12,12 +12,15 @@ def main():
 
     # ---- Jetson camera pipeline ----
     pipeline = (
-        "nvarguscamerasrc sensor-id=0 ! "
-        "video/x-raw(memory:NVMM), width=1280, height=720, framerate=30/1 ! "
-        "nvvidconv ! "
-        "video/x-raw, format=BGRx ! "
+        "nvarguscamerasrc sensor-id=1 "
+        "wbmode=4 aelock=false awblock=false "
+        "exposuretimerange='13000 30000' gainrange='1 8' ispdigitalgainrange='1 8' ! "
+        "video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1, format=NV12, colorimetry=bt709 ! "
+        "nvvidconv flip-method=0 ! "
+        "video/x-raw, width=640, height=640, format=BGRx ! "
         "videoconvert ! "
-        "video/x-raw, format=BGR ! appsink drop=True"
+        "video/x-raw, format=BGR ! "
+        "appsink drop=true max-buffers=1 sync=false"
     )
 
     cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
