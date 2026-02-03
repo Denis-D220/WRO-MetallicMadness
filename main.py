@@ -12,8 +12,8 @@ def main():
 
     # ---- Jetson camera pipeline ----
     pipeline = (
-        "nvarguscamerasrc sensor-id=1 "
-        "wbmode=4 aelock=false awblock=false "
+        "nvarguscamerasrc sensor-id=0 "
+        "wbmode=0 aelock=false awblock=false "
         "exposuretimerange='13000 30000' gainrange='1 8' ispdigitalgainrange='1 8' ! "
         "video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1, format=NV12, colorimetry=bt709 ! "
         "nvvidconv flip-method=0 ! "
