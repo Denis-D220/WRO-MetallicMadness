@@ -12,7 +12,14 @@ static volatile uint32_t last_encoder_count = 0;
 
 #define PULSES_PER_REV 1595
 
+typedef struct {
+    int active;
+    int direction;      // 1 = forward, -1 = reverse
+    int32_t target_ticks;
+    uint8_t speed;
+} MotorMotion;
 
+static volatile MotorMotion motion = {0};
 
 void motor_init(TIM_HandleTypeDef *pwm_tim, uint32_t pwm_channel, GPIO_TypeDef *dir_port, uint16_t dir_pin)
 {
@@ -61,52 +68,83 @@ void motor_reverse(uint8_t speed_percent)
 
 
 
+//void motor_forward_degrees(uint16_t degrees, uint8_t speed_percent)
+//{
+//	printf("[DEBUG] motor_forward_degrees called\n");
+//	printf("[DEBUG] Degrees: %u\n", degrees);
+//    encoder_count = 0;
+//    int32_t target_ticks = ((degrees * PULSES_PER_REV) + 359) / 360;
+//    printf("[DEBUG] Target Ticks: %ld\n", target_ticks);
+//
+//    motor_set_speed(speed_percent);
+//    HAL_GPIO_WritePin(motor_dir_port, motor_dir_pin, GPIO_PIN_SET);
+//
+//    printf("before look\n");
+//
+//    while (encoder_count < target_ticks) {
+//        printf("ENC: now=%ld, target=%ld\n", encoder_count, target_ticks);
+//
+//    }
+//
+//    motor_stop();
+//    printf("[DEBUG] motor_stop() called. Final encoder count: %ld\r\n", encoder_count);
+//}
+
 void motor_forward_degrees(uint16_t degrees, uint8_t speed_percent)
 {
-	printf("[DEBUG] motor_forward_degrees called\n");
-	printf("[DEBUG] Degrees: %u\n", degrees);
+    printf("[DEBUG] motor_forward_degrees called\n");
+
     encoder_count = 0;
-    int32_t target_ticks = ((degrees * PULSES_PER_REV) + 359) / 360;
-    printf("[DEBUG] Target Ticks: %ld\n", target_ticks);
 
-    motor_set_speed(speed_percent);
+    motion.target_ticks = ((degrees * PULSES_PER_REV) + 359) / 360;
+    motion.direction = 1;
+    motion.speed = speed_percent;
+    motion.active = 1;
+
     HAL_GPIO_WritePin(motor_dir_port, motor_dir_pin, GPIO_PIN_SET);
+    motor_set_speed(speed_percent);
 
-    printf("before look\n");
-
-    while (encoder_count < target_ticks) {
-        printf("ENC: now=%ld, target=%ld\n", encoder_count, target_ticks);
-
-    }
-
-    motor_stop();
-    printf("[DEBUG] motor_stop() called. Final encoder count: %ld\r\n", encoder_count);
+    printf("[DEBUG] Target Ticks: %ld\n", motion.target_ticks);
 }
 
+//void motor_reverse_degrees(uint16_t degrees, uint8_t speed_percent)
+//{
+//    printf("[DEBUG] motor_reverse_degrees called\n");
+//    printf("[DEBUG] Degrees: %u\n", degrees);
+//
+//    encoder_count = 0;
+//    int32_t target_ticks = ((degrees * PULSES_PER_REV) + 359) / 360;
+//    printf("[DEBUG] Target Ticks: %ld\n", target_ticks);
+//
+//    motor_set_speed(speed_percent);
+//    HAL_GPIO_WritePin(motor_dir_port, motor_dir_pin, GPIO_PIN_RESET);
+//
+//    printf("before look\n");
+//
+//    while (-encoder_count < target_ticks) {
+//        printf("ENC: now=%ld, target=%ld\n", encoder_count, target_ticks);
+//    }
+//
+//    motor_stop();
+//    printf("[DEBUG] motor_stop() called. Final encoder count: %ld\r\n", encoder_count);
+//}
 
 void motor_reverse_degrees(uint16_t degrees, uint8_t speed_percent)
 {
     printf("[DEBUG] motor_reverse_degrees called\n");
-    printf("[DEBUG] Degrees: %u\n", degrees);
 
     encoder_count = 0;
-    int32_t target_ticks = ((degrees * PULSES_PER_REV) + 359) / 360;
-    printf("[DEBUG] Target Ticks: %ld\n", target_ticks);
 
-    motor_set_speed(speed_percent);
+    motion.target_ticks = ((degrees * PULSES_PER_REV) + 359) / 360;
+    motion.direction = -1;
+    motion.speed = speed_percent;
+    motion.active = 1;
+
     HAL_GPIO_WritePin(motor_dir_port, motor_dir_pin, GPIO_PIN_RESET);
+    motor_set_speed(speed_percent);
 
-    printf("before look\n");
-
-    while (-encoder_count < target_ticks) {
-        printf("ENC: now=%ld, target=%ld\n", encoder_count, target_ticks);
-    }
-
-    motor_stop();
-    printf("[DEBUG] motor_stop() called. Final encoder count: %ld\r\n", encoder_count);
+    printf("[DEBUG] Target Ticks: %ld\n", motion.target_ticks);
 }
-
-
 
 void motor_stop(void)
 {
@@ -158,4 +196,21 @@ uint32_t motor_get_rpm(void)
 
     // Assume 11 pulses per revolution (PPR from Hall encoder doc)
     return (delta * 60000) / (11 * elapsed);  // RPM = (delta * 60s * 1000ms/s) / (PPR * time_ms)
+}
+
+void motor_update(void)
+{
+    if (!motion.active) return;
+
+    int32_t current = encoder_count;
+
+    if (
+        (motion.direction == 1 && current >= motion.target_ticks) ||
+        (motion.direction == -1 && -current >= motion.target_ticks)
+    ) {
+        motor_stop();
+        motion.active = 0;
+
+        printf("[DEBUG] Motion completed. Final encoder: %ld\n", encoder_count);
+    }
 }

@@ -214,20 +214,23 @@ int main(void)
 	/*********************************/
 	/*   Power on sensor and init    */
 	/*********************************/
+	uint8_t vl53l7ch_available = 0;
 	status = sensor_vl53l7ch_init(&dev);
-	if (status){
-	printf("VL53L7CX ULD Loading failed\n");
-	return status;
+	if (status) {
+	    printf("VL53L7CX ULD Loading failed\r\n");
+	    vl53l7ch_available = 0;
+	} else {
+	    vl53l7ch_available = 1;
+		/*********************************/
+		/*         Ranging loop          */
+		/*********************************/
+	    status = sensor_vl53l7ch_start_ranging(&dev);
+	    if (status) {
+	        printf("VL53L7CX start ranging failed\r\n");
+	        vl53l7ch_available = 0;
+	    }
 	}
 
-	/*********************************/
-	/*         Ranging loop          */
-	/*********************************/
-	status = sensor_vl53l7ch_start_ranging(&dev);
-	if (status){
-		printf("VL53L7CX Ranging loop failed\n");
-		return status;
-	}
 
 
 //	// -------------------------------------------------------
@@ -336,7 +339,10 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	 // LED blinking every 500ms (e.g., increment counter every 100ms)
+
+	motor_update();
+
+	// LED blinking every 500ms (e.g., increment counter every 100ms)
 	if (led_blink_counter++ >= 500) {
 		HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);  // Toggle LED
 		led_blink_counter = 0;  // Reset the counter
@@ -370,6 +376,22 @@ int main(void)
 				break;
 			case 0x0003:  // READ_DISTANCE_SENSOR
 			{
+				if (!vl53l7ch_available) {
+					send_response(0x0003, "VL53L7CX not available");
+					break;
+				}
+
+				status = sensor_vl53l7ch_check_data_ready(&dev, &isReady);
+				if (status) {
+					send_response(0x0003, "VL53L7CX check error");
+					break;
+				}
+
+				if (!isReady) {
+					send_response(0x0003, "Data not ready");
+					break;
+				}
+
 			    status = sensor_vl53l7ch_check_data_ready(&dev, &isReady);
 			    if (!isReady) {
 			        send_response(0x0003, "Data not ready");
@@ -465,6 +487,11 @@ int main(void)
 			}
 			case 0x0101:  // FORWARD with degrees
 			{
+				uint16_t payload_len = received_message.length - 7;
+				if (payload_len < 2) {
+				    send_response(0x0101, "ERR: degree payload too short");
+				    break;
+				}
 				uint16_t deg = received_message.data[0] | (received_message.data[1] << 8);
 			    motor_forward_degrees(deg,  global_motor_speed);
 			    send_response(0x0101, "Moved Forward by degrees");
@@ -472,6 +499,11 @@ int main(void)
 			}
 			case 0x0102:  // REVERSE with degrees
 			{
+				uint16_t payload_len = received_message.length - 7;
+				if (payload_len < 2) {
+				    send_response(0x0101, "ERR: degree payload too short");
+				    break;
+				}
 				uint16_t deg = received_message.data[0] | (received_message.data[1] << 8);
 			    motor_reverse_degrees(deg,  global_motor_speed);
 			    send_response(0x0102, "Moved Reverse by degrees");
@@ -528,6 +560,8 @@ int main(void)
 
 		// Reset the message length after processing
 		received_message.length = 0;
+
+
 	}
 
     // Read encoder data for RPM calculation
