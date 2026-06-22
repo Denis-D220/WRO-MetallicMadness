@@ -2,16 +2,18 @@
 
 This folder contains real photos of the **MetallicMadness / ARBIBOT** WRO Future Engineers self-driving car.
 
-The purpose of this folder is to provide visual evidence of the final robot design, including the chassis, bumper, sensor layout, steering system, electronics placement, and overall vehicle geometry. These photos support the Engineering Journal, root README, and WRO documentation requirements.
+The purpose of this folder is to provide visual evidence of the final robot design, including the chassis, bumper, sensor layout, steering system, electronics placement, wiring organization, and overall vehicle geometry. These photos support the Engineering Journal, root README, and WRO documentation requirements.
 
 ## Folder contents
 
 | File | Description |
 |---|---|
+| `car-front.png` | Front view of ARBIBOT, showing the front bumper, camera/sensor area, front wheels, and overall front geometry. |
 | `car-back.png` | Rear view of ARBIBOT, showing the back side of the chassis and rear vehicle structure. |
 | `car-left.png` | Left-side view of ARBIBOT, showing the side profile, chassis height, wheel layout, and sensor/electronics placement from the left side. |
 | `car-right.png` | Right-side view of ARBIBOT, showing the side profile, wheelbase, right-side sensor placement, and internal component arrangement. |
 | `car-top.png` | Top view of ARBIBOT, showing the overall component layout, chassis organization, electronics position, battery placement, and wiring distribution. |
+| `car-bottom.png` | Bottom view of ARBIBOT, showing the underside of the chassis, drivetrain area, wheel layout, and lower mechanical structure. |
 | `front-bumper.jpeg` | Close-up image of the front bumper, showing the mounting area for the front, left, and right distance sensors. |
 
 ## Photo purpose
@@ -28,6 +30,7 @@ The photos provide evidence for:
 - steering and drivetrain integration,
 - electronics mounting,
 - wiring organization,
+- underside mechanical structure,
 - and reproducibility of the mechanical design.
 
 ## Recommended documentation usage
@@ -39,6 +42,7 @@ README.md
 engineering-journal/engineering-journal.md
 docs/01-mechanical-design.md
 docs/02-power-and-sensor-architecture.md
+docs/05-systems-thinking-decisions.md
 ```
 
 Example Markdown reference from the root `README.md`:
@@ -50,6 +54,8 @@ Example Markdown reference from the root `README.md`:
 Example Markdown reference from a file inside `docs/`:
 
 ```markdown
+![ARBIBOT front view](../v-photos/car-front.png)
+![ARBIBOT bottom view](../v-photos/car-bottom.png)
 ![ARBIBOT front bumper](../v-photos/front-bumper.jpeg)
 ```
 
@@ -63,12 +69,12 @@ Example Markdown reference from `engineering-journal/engineering-journal.md`:
 
 | Required WRO-style view | Current file | Status |
 |---|---|---|
-| Front view | [TODO: add `car-front.png`] | Missing |
+| Front view | `car-front.png` | Available |
 | Back view | `car-back.png` | Available |
 | Left view | `car-left.png` | Available |
 | Right view | `car-right.png` | Available |
 | Top view | `car-top.png` | Available |
-| Bottom view | [TODO: add `car-bottom.png`] | Missing |
+| Bottom view | `car-bottom.png` | Available |
 | Sensor / bumper close-up | `front-bumper.jpeg` | Available |
 | Steering close-up | [TODO: add or reference steering image] | Missing in this folder |
 | Motor / encoder close-up | [TODO: add motor close-up] | Missing |
@@ -76,11 +82,11 @@ Example Markdown reference from `engineering-journal/engineering-journal.md`:
 
 ## Recommended additional photos
 
-Before final WRO submission, add the following images if possible:
+The main external vehicle views are now covered: front, back, left, right, top, and bottom.
+
+Before final WRO submission, the following optional close-up images would make the documentation stronger:
 
 ```text
-car-front.png
-car-bottom.png
 steering-closeup.png
 motor-encoder-closeup.png
 jetson-mounted.png
@@ -91,7 +97,7 @@ sensor-mounts-closeup.png
 robot-on-track.png
 ```
 
-These additional photos will make the documentation stronger and more reproducible.
+These additional photos are useful because they show how the robot is assembled internally and make the design easier to reproduce.
 
 ## Naming convention
 
@@ -141,4 +147,16 @@ Recommended update process:
 
 ## Current status
 
-The current folder includes back, left, right, top, and front-bumper photos. Front and bottom views should still be added to complete the full vehicle-photo set.
+The current folder includes the full external vehicle photo set:
+
+```text
+car-front.png
+car-back.png
+car-left.png
+car-right.png
+car-top.png
+car-bottom.png
+front-bumper.jpeg
+```
+
+The remaining recommended improvements are optional close-up photos for steering, motor/encoder, electronics, wiring, and battery placement.
