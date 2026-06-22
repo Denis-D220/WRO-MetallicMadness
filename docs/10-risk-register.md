@@ -76,7 +76,7 @@ The score is not perfect, but it helps the team focus on the most dangerous prob
 | R-004 | UART timeout or dropped serial frame | Communication | 4 | 4 | 4 | 64 | Critical |
 | R-005 | Motor command blocking vision loop | Software / Communication | 4 | 5 | 4 | 80 | Critical |
 | R-006 | Weak battery or voltage drop | Power | 3 | 5 | 3 | 45 | High |
-| R-007 | Jetson brownout or reboot | Power / Compute | 2 | 5 | 3 | 30 | Medium |
+| R-007 | Jetson brownout or reboot | Power / Compute | 3 | 5 | 3 | 45 | High |
 | R-008 | Servo jitter or steering power dip | Power / Steering | 3 | 4 | 3 | 36 | High |
 | R-009 | Wheel slip | Mechanical | 3 | 4 | 3 | 36 | High |
 | R-010 | Steering misalignment | Mechanical / Control | 3 | 4 | 2 | 24 | Medium |
@@ -468,30 +468,42 @@ Critical and actively mitigated. Continue testing with full obstacle runs.
 
 ### Description
 
-A weak or discharged battery can reduce motor speed, cause servo instability, create sensor errors, or reboot compute electronics.
+ARBIBOT uses two independent 3S battery systems:
+
+```text
+System A — Logic and Steering:
+Waveshare UPS, 3 × 18650, 11.1V nominal / 12.6V full / ~13.3Wh
+
+System B — Drive:
+Separate 3S 18650 motor battery -> 3S 20A BMS -> Cytron MD10C -> 12V JGY-370B motor
+```
+
+The runtime calculation shows enough energy margin for a 3-minute WRO round. However, weak cells, low charge, poor connectors, or voltage sag can still cause serious failures.
 
 ### Subsystem affected
 
-- motor battery pack
-- BMS
-- UPS module
-- Jetson
-- servo controller
+- Waveshare UPS
+- logic/steering 3S battery pack
+- motor 3S battery pack
+- 3S 20A BMS
+- Jetson Orin Nano
+- steering servo
 - STM32
-- sensors
+- camera
+- VL53 sensors
 - motor driver
 
 ### Causes
 
 - low state of charge,
-- battery cells not balanced,
-- high current draw,
+- weak or aged 18650 cells,
+- high-current servo movement,
+- Jetson workload peak,
 - motor stall,
-- servo peak current,
-- bad connector,
-- insufficient regulator current,
+- poor connector contact,
 - long wires or voltage drop,
-- repeated test runs without recharging.
+- repeated test runs without charging,
+- cells not able to support peak-current events.
 
 ### Symptoms
 
@@ -500,6 +512,7 @@ A weak or discharged battery can reduce motor speed, cause servo instability, cr
 - Jetson reboot,
 - camera disconnect,
 - STM32 reset,
+- USB serial disconnect,
 - motor weak or inconsistent,
 - sensor readings become unstable,
 - stop/start behavior changes with battery level.
@@ -508,37 +521,52 @@ A weak or discharged battery can reduce motor speed, cause servo instability, cr
 
 Very high. Power instability can cause full robot failure.
 
+### Current power-budget status
+
+| Item | Status |
+|---|---|
+| UPS energy | ~13.3Wh |
+| UPS average load | ~29W |
+| UPS runtime at 85% efficiency | ~24 min |
+| Motor battery energy | ~13.3Wh |
+| Motor runtime estimate | ~2 hr motor-time |
+| WRO round length | 3 min |
+| Runtime margin | Good |
+| Remaining concern | Peak-current sag under Jetson load + servo stall |
+
 ### Mitigation
 
-- Charge batteries before each test session.
+- Charge both 3S packs before each test session.
 - Measure voltage before and after each run.
 - Keep motor and electronics power domains separated.
-- Use UPS module for Jetson/electronics.
-- Use BMS for motor battery protection.
+- Use UPS module for Jetson, sensors, and steering.
+- Use the 3S BMS for motor battery protection.
 - Check connectors and wire gauge.
 - Avoid motor stall.
-- Add battery voltage to test log.
-- Replace weak 18650 cells if voltage sag is excessive.
+- Avoid steering commands that hold the servo at mechanical limits.
+- Add battery voltage to the test log.
+- Replace weak 18650 cells if voltage sag is observed.
 
 ### Detection method
 
-- Measure start and end voltage.
-- Observe voltage under acceleration.
-- Log failures by battery level.
-- Check whether failures happen late in test session.
-- Test Jetson runtime with YOLO active.
-- Test motor runtime separately.
+- Measure start and end voltage of both battery systems.
+- Observe voltage under acceleration and aggressive steering.
+- Run YOLO11n while steering aggressively.
+- Watch for Jetson reboot, camera dropout, USB serial disconnect, or servo glitch.
+- Check whether failures happen late in a test session.
+- Test motor runtime separately from Jetson/servo runtime.
 
 ### Recovery behavior
 
-- Stop testing when voltage falls below safe level.
-- Recharge or replace battery pack.
-- Reduce speed if voltage sag is detected during testing.
+- Stop testing when voltage becomes unstable.
+- Recharge or replace battery packs.
+- Reduce steering aggressiveness if servo load causes sag.
 - Do not continue autonomous testing with unstable voltage.
+- If sag is confirmed, use higher-discharge 18650 cells and add a 1000µF or larger capacitor across the servo 5V rail.
 
 ### Status
 
-Open. Estimated runtime is acceptable, but final measured runtime and voltage sag are still needed.
+Partially closed. Energy/runtime margin is solved. Peak-current sag remains the main verification item.
 
 ---
 
@@ -546,24 +574,27 @@ Open. Estimated runtime is acceptable, but final measured runtime and voltage sa
 
 ### Description
 
-The Jetson Orin Nano may reboot if its input voltage/current becomes unstable. Since the Jetson runs AI vision and high-level decisions, this is a severe failure.
+The Jetson Orin Nano may reboot if the UPS battery or regulator path cannot support a workload spike. Since the Jetson runs YOLO11n vision, camera processing, navigation logic, and serial command output, a reboot causes immediate autonomous failure.
 
 ### Subsystem affected
 
 - Jetson Orin Nano
-- camera
-- YOLO model
+- Waveshare UPS
+- IMX477 camera
+- USB serial devices
+- YOLO11n process
 - navigation logic
 - serial control from Jetson
 
 ### Causes
 
-- UPS output unable to handle peak load,
-- weak battery cells,
+- Jetson workload peak around 40W,
+- steering servo high-current event occurring at the same time,
+- weak 18650 UPS cells,
+- low UPS charge,
 - loose power connector,
-- motor noise coupling into electronics,
-- current draw from camera and peripherals,
-- voltage sag during servo movement.
+- voltage sag during aggressive steering,
+- USB/CSI devices dropping during power dip.
 
 ### Symptoms
 
@@ -572,38 +603,54 @@ The Jetson Orin Nano may reboot if its input voltage/current becomes unstable. S
 - Jetson boot messages appear,
 - robot stops making decisions,
 - serial commands stop,
-- YOLO process exits.
+- YOLO process exits,
+- USB devices reconnect.
 
 ### Impact
 
 Very high.
 
+### Current analysis
+
+The UPS has enough energy for the 3-minute WRO round, but the worst-case instantaneous load can approach:
+
+```text
+Jetson peak: ~40W
+Servo stall reflected to battery side: ~1.3A equivalent
+Estimated UPS pack peak draw: ~4.5A to 5A
+```
+
+For 1200mAh cells, this is approximately a 4C peak draw. The risk depends on the real discharge capability of the installed cells.
+
 ### Mitigation
 
 - Use stable UPS power path.
-- Fully charge Jetson battery pack.
+- Fully charge the UPS battery pack before testing.
 - Keep Jetson power separate from motor power.
-- Reduce unnecessary USB loads.
-- Monitor Jetson temperature and power mode.
+- Avoid servo mechanical binding.
+- Monitor Jetson uptime during aggressive steering tests.
 - Use secure power connectors.
-- Test full-load runtime before competition.
+- If sag is observed, use higher-discharge 18650 cells.
+- Add a 1000µF or larger capacitor across the servo 5V rail if needed.
 
 ### Detection method
 
 - Watch system uptime.
 - Check `dmesg` after failure.
-- Monitor voltage if possible.
-- Run YOLO stress test while servo and motor are active.
+- Monitor for USB/camera reconnects.
+- Run YOLO11n stress test while steering aggressively.
+- Perform a full 3-minute run and inspect for resets or dropped camera frames.
 
 ### Recovery behavior
 
 - If Jetson reboots during testing, stop robot and do not continue run.
 - Investigate power and thermal logs.
-- Replace or recharge battery pack.
+- Recharge or replace UPS cells.
+- Reduce servo load and check mechanical steering friction.
 
 ### Status
 
-Medium risk. Needs final full-load validation.
+High risk until peak-current sag is empirically tested.
 
 ---
 
@@ -611,15 +658,17 @@ Medium risk. Needs final full-load validation.
 
 ### Description
 
-The MG996R servo can draw high current, especially when steering under load. This can cause jitter or voltage dips if power is insufficient.
+The MG996R servo can draw high current, especially when steering under load. The current budget shows normal steering around 0.5–0.9A and stall up to approximately 2.5A from the UPS 5V rail.
 
 ### Subsystem affected
 
 - steering servo
 - Pololu servo controller
-- UPS/electronics power
+- UPS 5V rail
+- Jetson power stability
 - mechanical steering linkage
 - lane controller
+- obstacle controller
 
 ### Causes
 
@@ -628,7 +677,8 @@ The MG996R servo can draw high current, especially when steering under load. Thi
 - power rail voltage drop,
 - weak UPS battery,
 - servo trying to hold against mechanical limit,
-- aggressive steering commands.
+- aggressive steering commands,
+- obstacle PDI gain or clamp too high.
 
 ### Symptoms
 
@@ -643,15 +693,29 @@ The MG996R servo can draw high current, especially when steering under load. Thi
 
 High. Steering instability affects every challenge.
 
+### Current rail check
+
+The UPS 5V rail is rated for approximately 5A / 25W.
+
+Expected 5V peak load:
+
+```text
+servo stall: ~2.5A
+sensors + I²C board: ~0.14A
+total: ~2.6A
+```
+
+This is within the 5A rail rating. The main risk is not the rail rating itself, but peak-current sag on the UPS battery pack during simultaneous Jetson load and servo load.
+
 ### Mitigation
 
 - Avoid commanding beyond mechanical limits.
 - Tune steering clamp.
 - Verify linkage does not bind.
-- Measure servo current.
-- Use adequate power supply.
 - Reduce PDI/PID gains if steering oscillates.
 - Check servo horn and linkage screw tightness.
+- Add a 1000µF or larger capacitor across the servo 5V rail if voltage dips are observed.
+- Use higher-discharge UPS cells if sag appears.
 
 ### Detection method
 
@@ -660,16 +724,18 @@ High. Steering instability affects every challenge.
 - Listen for servo strain at endpoints.
 - Watch for resets during steering.
 - Check if jitter increases when battery is low.
+- Test aggressive steering while YOLO11n is running.
 
 ### Recovery behavior
 
 - Reduce steering command range.
 - Stop test if servo overheats.
 - Recenter steering and restart calibration.
+- Recharge or replace UPS cells if jitter appears only at lower battery levels.
 
 ### Status
 
-High risk during aggressive obstacle steering. Partially mitigated by steering clamp and mechanical tuning.
+High risk during aggressive obstacle steering until full-load steering test is completed.
 
 ---
 

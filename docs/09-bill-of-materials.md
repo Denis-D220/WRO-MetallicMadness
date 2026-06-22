@@ -44,22 +44,22 @@ ARBIBOT is divided into the following hardware subsystems:
 
 ## 3. Main Component Summary
 
-| # | Component | Qty | Function | Voltage | Current | Interface |
+| # | Component | Qty | Function | Voltage | Current / power | Interface |
 |---:|---|---:|---|---|---|---|
-| 1 | NVIDIA Jetson Orin Nano | 1 | AI compute, camera processing, YOLO inference, navigation decisions | 12V input through UPS/power path | Up to ~25W typical / up to ~40W high load estimate | USB, CSI camera, serial |
-| 2 | IMX477 camera | 1 | Vision input for pillars, lines, and corner features | Powered from Jetson | [TODO: verify] | MIPI CSI-2 |
-| 3 | STM32F411CEU6 Black Pill | 1 | Low-level control, sensor polling, motor control, encoder reading | 5V input / 3.3V logic | ~10 mA estimate at 100 MHz, verify final | USB/UART, I2C, GPIO, PWM, EXTI |
-| 4 | Cytron MD10C motor driver | 1 | Drives rear DC gear motor | Motor battery voltage, nominal 11.1V / full 12.6V | Motor dependent; driver rated higher than motor current | PWM + DIR from STM32 |
-| 5 | JGY-370B 12V worm gear motor with encoder | 1 | Rear-wheel drive motor | 12V nominal | 0.06-0.09A no-load, 0.2-0.3A rated load, 1.3-2.0A stall estimate | DC motor wires + quadrature encoder |
-| 6 | MG996R servo | 1 | Front steering actuator | 5V | ~10mA idle, 120-170mA no-load, 500-900mA normal, 1.5-2.5A stall estimate | Servo PWM via Pololu controller |
-| 7 | Pololu Micro Maestro servo controller | 1 | Dedicated servo pulse controller | 5V logic / servo power input | [TODO: verify] plus servo load | USB serial / TTL serial, servo PWM |
-| 8 | VL53L4CD ToF distance sensor | 3 | Side/front distance sensing and wall following | 3.3V logic / module dependent | ~15-25mA active estimate each | I2C + XSHUT |
-| 9 | VL53L8CH front matrix ToF sensor | 1 | Front barrier and corner matrix sensing | 3.3V logic / module dependent | [TODO: verify] | I2C + optional XSHUT |
-| 10 | CP2102 USB to TTL module | 1 | USB serial bridge for STM32 / debugging | 5V USB, 3.3V/5V TTL depending config | [TODO: verify] | USB, UART TX/RX |
-| 11 | Waveshare UPS module | 1 | Power supply for Jetson/electronics domain | 3x 18650 input, 12.6V charge, 5V/12V outputs depending module | Output up to 5V 5A; verify final use | Power + optional I2C |
-| 12 | 3S 18650 motor battery pack | 1 | Main motor power source | 11.1V nominal, 12.6V full | Depends on cells and load | Power |
+| 1 | NVIDIA Jetson Orin Nano | 1 | AI compute, camera processing, YOLO11n inference, navigation decisions | 12V input from Waveshare UPS path | 25W typical, 40W peak | USB, CSI camera, serial |
+| 2 | IMX477 camera | 1 | Vision input for pillars, lines, and corner features | Powered from Jetson MIPI CSI | ~180mA / ~0.60W, included in Jetson domain | MIPI CSI-2 |
+| 3 | STM32F411CEU6 Black Pill | 1 | Low-level control, sensor polling, motor control, encoder reading | 3.3V from CP2102 / Jetson USB subtree | ~40mA / ~0.13W | USB/UART, I2C, GPIO, PWM, EXTI |
+| 4 | Cytron MD10C motor driver | 1 | Drives rear DC gear motor | 3S motor battery, 11.1V nominal / 12.6V full | Motor dependent; driver rated 13A continuous / 30A peak | PWM + DIR from STM32 |
+| 5 | JGY-370B 12V worm gear motor with encoder | 1 | Rear-wheel drive motor | 12V nominal from 3S motor path | 0.2-0.3A run, 1.3-2.0A stall | DC motor wires + quadrature encoder |
+| 6 | MG996R servo | 1 | Front steering actuator | 5V from Waveshare UPS | 0.5-0.9A run, 2.5A stall | Servo PWM via Pololu controller |
+| 7 | Pololu Micro Maestro servo controller | 1 | Dedicated servo pulse controller | 5V logic / servo power input depending wiring | Controller low; servo current handled by servo power path | USB serial / TTL serial, servo PWM |
+| 8 | VL53L4CD ToF distance sensor | 3 | Side/front distance sensing and wall following | 5V module rail through I²C board / 3.3V logic internally | ~60mA total / ~0.30W | I2C + XSHUT |
+| 9 | VL53L8CH front matrix ToF sensor | 1 | Front barrier and corner matrix sensing | 5V module rail through I²C board / 3.3V logic internally | ~60mA typical, ~120mA peak / ~0.30W typical | I2C + optional XSHUT |
+| 10 | CP2102 USB to TTL module | 1 | USB serial bridge for STM32 / debugging | Powered from Jetson USB | ~20mA / ~0.07W, included in Jetson domain | USB, UART TX/RX |
+| 11 | Waveshare UPS module | 1 | Power supply for logic and steering domain | 3 × 18650, 11.1V nominal / 12.6V full | UPS 5V rail rated 5A / 25W | Power + optional I2C |
+| 12 | 3S 18650 motor battery pack | 1 | Main drive motor power source | 11.1V nominal, 12.6V full | 1200mAh / ~13.3Wh | Power |
 | 13 | 3S 20A BMS | 1 | Motor battery protection | 3S Li-ion, 12.6V full | 20A module rating | Power |
-| 14 | I2C interface expansion board | 1 | Cleaner I2C and power wiring for sensors | 3.3V / 5V depending wiring | Low current | I2C bus |
+| 14 | I2C interface expansion board | 1 | Cleaner I2C and power wiring for sensors | 5V sensor rail | ~10-20mA / ~0.08W | I2C bus |
 | 15 | 3D-printed chassis | 1 | Mechanical structure | N/A | N/A | Mechanical |
 | 16 | Front bumper / sensor mount | 1 | Holds front/side sensors and protects front | N/A | N/A | Mechanical |
 | 17 | Rubber wheels | 4 | Contact with WRO field | N/A | N/A | Mechanical |
@@ -586,36 +586,78 @@ Important wiring practices:
 
 ## 5. Power Domain Summary
 
-ARBIBOT uses separated power domains to reduce instability.
+ARBIBOT uses two independent 3S battery systems.
 
-### 5.1 Motor Power Domain
-
-```text
-3S 18650 motor battery -> 3S 20A BMS -> Cytron MD10C -> JGY-370B motor
-```
-
-| Component | Voltage | Current notes |
-|---|---:|---|
-| 3S battery | 11.1V nominal / 12.6V full | Depends on cell capacity and discharge rating |
-| 3S BMS | 12.6V full | 20A module rating |
-| Cytron MD10C | Motor battery voltage | Must handle motor load |
-| JGY-370B motor | 12V nominal | 0.06-0.09A no-load, 0.2-0.3A normal, 1.3-2.0A stall estimate |
-
-### 5.2 Electronics / Compute Power Domain
+### 5.1 System A — Logic and Steering Domain
 
 ```text
-Waveshare UPS -> Jetson Orin Nano / camera / servo controller / electronics
+Waveshare UPS, 3 × 18650 cells
+11.1V nominal / 12.6V full / ~13.3Wh
+    |
+    +--> 12V path -> NVIDIA Jetson Orin Nano
+    |
+    +--> 5V rail -> MG996R steering servo
+    |
+    +--> 5V rail -> I²C expansion board -> 3× VL53L4CD + VL53L8CH
 ```
 
-| Component | Voltage | Current notes |
-|---|---:|---|
-| Waveshare UPS | 3x 18650 input / regulated outputs | Verify final current margin |
-| Jetson Orin Nano | 12V path in current design | Up to ~25W typical / ~40W high load estimate |
-| Camera | From Jetson CSI | Low current, verify module |
-| Pololu servo controller | 5V | Low controller current plus servo power |
-| MG996R servo | 5V | Peak current can be high |
-| STM32 | 5V USB / 3.3V logic | Low current |
-| VL53 sensors | 3.3V/module dependent | ~15-25mA each for VL53L4CD estimate |
+| Component | Voltage / source | Current / power notes |
+|---|---|---|
+| Waveshare UPS | 3 × 18650, 11.1V nominal / 12.6V full | ~13.3Wh energy |
+| Jetson Orin Nano | UPS 12V path | 25W typical, 40W peak |
+| MG996R servo | UPS 5V rail | 0.5-0.9A run, 2.5A stall |
+| VL53L4CD ×3 | UPS 5V through I²C board | ~60mA total / ~0.30W |
+| VL53L8CH | UPS 5V through I²C board | ~60mA typical, ~120mA peak |
+| I²C expansion board | UPS 5V | ~10-20mA / ~0.08W |
+| IMX477 camera | Jetson MIPI CSI | ~180mA / ~0.60W, included in Jetson domain |
+| CP2102 USB-TTL | Jetson USB | ~20mA / ~0.07W, included in Jetson domain |
+| STM32F411 | CP2102 / Jetson USB subtree | ~40mA / ~0.13W |
+
+### 5.2 System B — Drive Motor Domain
+
+```text
+3S 18650 motor battery
+11.1V nominal / 12.6V full / ~13.3Wh
+    |
+    v
+3S 20A BMS
+    |
+    v
+Cytron MD10C
+    |
+    v
+12V JGY-370B drive motor
+```
+
+| Component | Voltage / source | Current / power notes |
+|---|---|---|
+| 3S motor battery | 11.1V nominal / 12.6V full | 1200mAh / ~13.3Wh |
+| 3S BMS | 3S Li-ion | 20A module rating |
+| Cytron MD10C | 3S motor battery path | 13A continuous / 30A peak driver rating |
+| JGY-370B motor | 12V nominal | 0.2-0.3A run, 1.3-2.0A stall |
+
+### 5.3 Runtime and Rail Margin
+
+| Metric | Value |
+|---|---:|
+| UPS average load | ~29W |
+| UPS energy | ~13.3Wh |
+| UPS runtime at 85% efficiency | ~24 min |
+| Motor battery energy | ~13.3Wh |
+| Motor runtime estimate at ~0.6A average | ~2 hr motor-time |
+| WRO round length | 3 min |
+| UPS margin | ~8× one round |
+| Motor battery margin | ~40× one round |
+
+### 5.4 Remaining Power Verification
+
+The power budget closes the energy and rail-rating questions, but one empirical item remains:
+
+```text
+Test simultaneous YOLO11n high load + aggressive steering servo load.
+```
+
+Watch for Jetson reboot, camera dropout, USB serial disconnect, STM32 reset, or servo glitch. If voltage sag appears, use higher-discharge 18650 cells and add a 1000µF or larger capacitor across the servo 5V rail.
 
 ---
 
@@ -636,24 +678,24 @@ Waveshare UPS -> Jetson Orin Nano / camera / servo controller / electronics
 
 ## 7. Estimated Current Budget
 
-These values should be treated as estimates until measured on the final robot.
+These values are traced estimates based on the current ARBIBOT power architecture.
 
 | Subsystem | Quantity | Typical current / power | Peak current / power | Notes |
 |---|---:|---:|---:|---|
-| Jetson Orin Nano | 1 | Up to ~25W estimate | Up to ~40W estimate | Depends on power mode and YOLO load |
-| IMX477 camera | 1 | [TODO] | [TODO] | Powered from Jetson |
-| STM32F411 | 1 | ~10mA estimate | [TODO] | Verify with peripherals active |
-| MG996R servo | 1 | 500-900mA normal load | 1.5-2.5A stall estimate | Major peak-current risk |
-| JGY-370B motor | 1 | 0.2-0.3A rated load estimate | 1.3-2.0A stall estimate | Motor power domain |
-| VL53L4CD | 3 | 15-25mA each estimate | [TODO] | Active ranging |
-| VL53L8CH | 1 | [TODO] | [TODO] | Verify final module |
-| Pololu controller | 1 | [TODO] | [TODO] | Excluding servo load |
-| CP2102 | 1 | [TODO] | [TODO] | USB serial module |
-| I2C expansion board | 1 | negligible | negligible | Passive/low-current wiring board |
+| Jetson Orin Nano | 1 | 25W typical | 40W peak | Includes vision workload and Jetson-powered subtree |
+| IMX477 camera | 1 | ~180mA / ~0.60W | [TODO: verify peak] | Powered from Jetson; listed for traceability |
+| STM32F411 | 1 | ~40mA / ~0.13W | [TODO: verify peak] | Powered through CP2102 / Jetson USB subtree |
+| MG996R servo | 1 | 0.5-0.9A / 2.5-4.5W | 2.5A / ~12.5W stall | Main 5V peak-current risk |
+| JGY-370B motor | 1 | 0.2-0.3A / ~2.2-3.3W | 1.3-2.0A / ~14-22W stall | Separate 3S motor battery path |
+| VL53L4CD | 3 | ~60mA total / ~0.30W | [TODO: verify peak] | Sensor rail |
+| VL53L8CH | 1 | ~60mA / ~0.30W | ~120mA peak | Sensor rail |
+| I²C expansion board | 1 | ~10-20mA / ~0.08W | Low | Wiring/interface board |
+| CP2102 | 1 | ~20mA / ~0.07W | [TODO: verify peak] | Jetson USB subtree |
 
 ---
 
 ## 8. Component Selection Reasoning
+
 
 | Component choice | Reason |
 |---|---|
@@ -706,24 +748,25 @@ Recommended spare parts for testing and competition:
 
 ## 11. Final BOM Table for Competition
 
-Complete this table before final submission.
+Complete measured values can be added after multimeter/current testing. The current traced values are shown below.
 
-| Item | Qty final | Verified voltage | Measured current | Verified interface | Final status |
+| Item | Qty final | Verified voltage | Current / power | Verified interface | Final status |
 |---|---:|---:|---:|---|---|
-| Jetson Orin Nano | 1 | [TODO] | [TODO] | [TODO] | [TODO] |
-| IMX477 camera | 1 | [TODO] | [TODO] | [TODO] | [TODO] |
-| STM32F411 | 1 | [TODO] | [TODO] | [TODO] | [TODO] |
-| Cytron MD10C | 1 | [TODO] | [TODO] | [TODO] | [TODO] |
-| JGY-370B motor | 1 | [TODO] | [TODO] | [TODO] | [TODO] |
-| MG996R servo | 1 | [TODO] | [TODO] | [TODO] | [TODO] |
-| Pololu servo controller | 1 | [TODO] | [TODO] | [TODO] | [TODO] |
-| VL53L4CD | 3 | [TODO] | [TODO] | [TODO] | [TODO] |
-| VL53L8CH | 1 | [TODO] | [TODO] | [TODO] | [TODO] |
-| CP2102 | 1 | [TODO] | [TODO] | [TODO] | [TODO] |
-| Waveshare UPS | 1 | [TODO] | [TODO] | [TODO] | [TODO] |
-| 3S battery pack | 1 | [TODO] | [TODO] | Power | [TODO] |
-| 3S BMS | 1 | [TODO] | [TODO] | Power | [TODO] |
-| I2C expansion board | 1 | [TODO] | [TODO] | I2C | [TODO] |
+| Jetson Orin Nano | 1 | UPS 12V path | 25W typical, 40W peak | CSI, USB, serial | Verified estimate |
+| IMX477 camera | 1 | Jetson CSI | ~180mA / ~0.60W | MIPI CSI-2 | Verified estimate, included in Jetson domain |
+| STM32F411 | 1 | 3.3V logic from CP2102 / USB subtree | ~40mA / ~0.13W | UART, I2C, PWM, GPIO | Verified estimate |
+| Cytron MD10C | 1 | 3S motor battery, 11.1V / 12.6V | Motor dependent; driver 13A continuous / 30A peak | PWM + DIR | Verified architecture |
+| JGY-370B motor | 1 | 12V nominal from 3S motor path | 0.2-0.3A run, 1.3-2.0A stall | DC motor + encoder | Verified estimate |
+| MG996R servo | 1 | UPS 5V | 0.5-0.9A run, 2.5A stall | PWM via Pololu | Verified estimate |
+| Pololu servo controller | 1 | 5V | Low controller current, servo load separate | USB serial / TTL serial | Verified architecture |
+| VL53L4CD | 3 | 5V module rail through I²C board | ~60mA total / ~0.30W | I2C + XSHUT | Verified estimate |
+| VL53L8CH | 1 | 5V module rail through I²C board | ~60mA typical, ~120mA peak | I2C | Verified estimate |
+| CP2102 | 1 | Jetson USB | ~20mA / ~0.07W | USB-UART | Verified estimate |
+| Waveshare UPS | 1 | 3S 18650, 11.1V / 12.6V | 5V rail rated 5A / 25W | Power + optional I2C | Verified architecture |
+| Logic/steering UPS battery pack | 1 | 3S, 11.1V nominal / 12.6V full | 1200mAh / ~13.3Wh | Power | Verified architecture |
+| Motor battery pack | 1 | 3S, 11.1V nominal / 12.6V full | 1200mAh / ~13.3Wh | Power | Verified architecture |
+| 3S BMS | 1 | 3S Li-ion | 20A module rating | Power | Verified architecture |
+| I²C expansion board | 1 | UPS 5V | ~10-20mA / ~0.08W | I2C | Verified estimate |
 
 ---
 

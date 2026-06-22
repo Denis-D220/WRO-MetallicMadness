@@ -69,33 +69,42 @@ The STM32 handles real-time hardware interaction, while the Jetson handles the c
 
 ## 3. Power Architecture Overview
 
-ARBIBOT uses **two main battery/power paths**:
+ARBIBOT uses **two independent 3S battery systems**. This is one of the most important reliability decisions in the robot.
 
-| Power path | Main load | Purpose |
-|---|---|---|
-| Motor power path | Cytron MD10C + DC drive motor | High-current propulsion |
-| Jetson/electronics power path | Jetson Orin Nano, camera, Pololu servo controller | AI, vision, steering control, high-level processing |
-| STM32 logic power | STM32F411 via USB/TTL 5V | Low-level command and sensor controller |
+| System | Battery | Main loads | Purpose |
+|---|---|---|---|
+| System A — Logic and steering | Waveshare UPS, 3 × 18650 cells, 11.1 V nominal / 12.6 V full | Jetson, camera path, STM32 subtree, servo, I²C board, VL53 sensors | AI, vision, steering, sensors, high-level and low-level control |
+| System B — Drive | Separate 3S 18650 motor battery, 11.1 V nominal / 12.6 V full | 3S 20A BMS, Cytron MD10C, 12V JGY-370B motor | Rear-wheel propulsion |
 
-The power paths are separated to improve reliability. The DC motor and servo can draw high peak currents, especially during acceleration, steering, or stall conditions. These current spikes can cause voltage drops. If all electronics were powered from one weak shared supply, the Jetson or STM32 could reset during motion, which would be fatal during a WRO run.
+The power paths are separated to improve reliability. The DC drive motor and steering servo can draw high peak current during acceleration, hard turning, or stall conditions. If the Jetson, camera, sensors, servo, and motor were powered from one weak shared supply, a current spike could cause voltage sag, camera dropout, UART errors, or a Jetson reboot.
+
+The final architecture keeps the high-current drive path separate from the logic/vision path:
+
+```text
+System A:
+Waveshare UPS -> Jetson / steering servo / I²C sensor rail
+
+System B:
+3S motor battery -> 3S 20A BMS -> Cytron MD10C -> 12V JGY-370B motor
+```
 
 ---
 
-## 4. Motor Power Path
+## 4. Drive Motor Power Path
 
-The drive motor is powered through a **3S 20A BMS system** and a **Cytron MD10C motor driver**.
+The drive motor is powered through a **separate 3S motor battery**, a **3S 20A BMS**, and a **Cytron MD10C motor driver**.
 
 ```text
-3S Li-ion battery pack
+3S 18650 Li-ion motor battery
     |
     v
-BMS 3S 20A
+3S 20A BMS
     |
     v
 Cytron MD10C motor driver
     |
     v
-JGY-370B 12V DC gear motor with encoder
+JGY-370B 12V DC worm gear motor with encoder
 ```
 
 ![BMS 3S 20A](../engineering-journal/images/bms3s_20a.jpg)
@@ -107,13 +116,13 @@ JGY-370B 12V DC gear motor with encoder
 | Cell type | 18650 lithium-ion |
 | Cell nominal voltage | 3.7 V |
 | Cell capacity | 1200 mAh |
-| Cell chemistry | Li-ion |
 | Series configuration | 3S |
 | Pack nominal voltage | 11.1 V |
 | Pack fully charged voltage | 12.6 V |
-| Approximate pack capacity | 1200 mAh, if cells are connected only in series |
+| Approximate pack capacity | 1200 mAh, because cells are connected in series |
 | Approximate energy | 11.1 V × 1.2 Ah = 13.32 Wh |
-| Protection | BMS 3S 20A |
+| Protection | 3S 20A BMS |
+| Main load | Cytron MD10C + 12V JGY-370B drive motor |
 
 The nominal motor pack voltage is close to the 12V requirement of the selected DC gear motor. The BMS protects the lithium-ion cells and provides the motor power path to the motor driver.
 
@@ -133,91 +142,94 @@ The robot uses a **Cytron MD10C DC motor driver** to control the brushed DC gear
 | Peak current | 30 A |
 | STM32 PWM pin | PA6 / TIM3_CH1 |
 | STM32 direction pin | PA1 |
-| Common ground | Required between STM32 and MD10C |
+| Common ground | Required between STM32 and MD10C control reference |
 
 The STM32 sends a PWM signal and direction signal to the MD10C. The MD10C then switches the motor power from the battery/BMS path.
 
-### 4.3 Motor Current Estimate
+### 4.3 Motor Current and Power Estimate
 
 The JGY-370B motor current depends heavily on load. The expected values are:
 
-| Motor condition | Estimated current |
-|---|---:|
-| No-load | 0.06 A to 0.09 A |
-| Normal driving load | 0.2 A to 0.3 A |
-| Heavy acceleration / high friction | [TODO: measure] |
-| Stall / peak condition | 1.3 A to 2.0 A |
+| Motor condition | Estimated current | Estimated power from 3S pack |
+|---|---:|---:|
+| No-load | 0.06 A to 0.09 A | ~0.7 W to 1.0 W |
+| Normal driving load | 0.2 A to 0.3 A | ~2.2 W to 3.3 W |
+| Average motor runtime estimate | ~0.6 A | ~6.7 W |
+| Stall / peak condition | 1.3 A to 2.0 A | ~14 W to 22 W |
 
-The MD10C has far more current capacity than the motor normally requires. This margin is useful because motor start-up and stall current are always higher than steady-state running current.
+The motor stall estimate is far below the 20 A BMS rating and far below the MD10C rating. The practical motor-side risks are not energy capacity; they are voltage sag under load, wiring quality, connector reliability, and avoiding wheel stall.
 
 ---
 
-## 5. Jetson Power Path
+## 5. Logic and Steering Power Path
 
-The Jetson Orin Nano is powered independently from the motor system using a **Waveshare UPS module**.
+The Jetson, steering servo, I²C expansion board, and distance sensors are powered independently from the drive motor system using a **Waveshare UPS module**.
 
 ![Waveshare UPS module](../engineering-journal/images/waveshare_ups.jpg)
 
 | UPS parameter | Value |
 |---|---|
 | Battery support | 3 × 18650 lithium batteries |
-| Output voltage | Batteries series voltage; 5 V 5 A; 3.3 V 300 mA |
-| Control interface | I2C |
+| Pack nominal voltage | 11.1 V |
+| Pack fully charged voltage | 12.6 V |
+| Pack capacity | 1200 mAh |
+| Approximate energy | 13.32 Wh |
+| Output voltage | Battery series voltage / 12V path; 5 V 5 A; 3.3 V 300 mA |
+| Control interface | I²C |
 | Charger | 12.6 V 2 A |
 | Dimensions | 60 × 93 mm |
 | Mounting hole size | 3.0 mm |
 | Jetson supply voltage used | 12 V / battery series voltage path |
 
-The Jetson system was separated from the motor battery because the Jetson is sensitive to voltage drops. When YOLO inference is running, the Jetson can draw significant power. Sharing the same supply with the drive motor could cause resets or unstable behavior.
+The Jetson system was separated from the motor battery because the Jetson is sensitive to voltage drops. When YOLO11n inference is running, the Jetson can draw significant power. Sharing the same supply with the drive motor could cause resets or unstable behavior.
 
-### 5.1 Jetson Current and Power Estimate
+### 5.1 Logic and Steering Power Distribution
 
-The Jetson Orin Nano power consumption depends on workload:
+```text
+Waveshare UPS
+    |
+    +--> 12 V -> NVIDIA Jetson Orin Nano
+    |
+    +--> 5 V -> MG996R steering servo
+    |
+    +--> 5 V -> I²C expansion board -> 3× VL53L4CD + VL53L8CH
+```
 
-| Jetson condition | Estimated power |
+The Jetson internally powers the IMX477 camera, CP2102 USB-TTL module, and STM32F411 subtree through its USB/CSI-related rails. These devices are listed separately for traceability, but their power draw is already included in the Jetson workload estimate.
+
+### 5.2 Jetson Current and Power Estimate
+
+| Jetson condition | Estimated current / power |
 |---|---:|
-| Idle / low load | [TODO: measure] |
-| Camera capture only | [TODO: measure] |
-| YOLO inference running | Up to approximately 25 W for standard workloads |
-| Higher performance load | Up to approximately 40 W |
-| Competition workload estimate | [TODO: measure on robot] |
+| Typical AI/vision workload | ~2.3 A at 11.1 V / ~25 W |
+| Peak workload | ~40 W |
+| Notes | Includes camera path, USB devices, and active vision workload as part of Jetson domain |
 
-The Jetson power budget should be measured during a real run because camera capture, model inference, USB serial communication, and navigation logic can change the actual current draw.
+The Jetson runs YOLO11n, OpenCV camera capture, navigation logic, and serial communication. The nano model was selected partly to keep inference latency low and avoid starving the serial sensor/control loop.
 
-### 5.2 Camera Power
+### 5.3 Camera, STM32, and USB Subtree
 
-The camera is powered directly from the Jetson through the CSI camera connector.
+These devices are traceable loads, but they are not added separately to the UPS total because they draw from the Jetson rails.
 
-| Camera parameter | Value |
-|---|---|
-| Camera model | Mini 12.3MP HQ Camera compatible with NVIDIA Jetson |
-| Image sensor | Sony IMX477 |
-| Sensor size | 1/2.3 inch |
-| Lens mount | M12 |
-| Interface | MIPI CSI-2 |
-| Connector | 22-pin, 0.5 mm pitch |
-| Power source | Jetson CSI camera interface |
-
-The camera is part of the Jetson domain because it is used by OpenCV and the YOLO detection pipeline.
+| Component | Source | Current | Power | Notes |
+|---|---|---:|---:|---|
+| IMX477 camera | Jetson MIPI CSI | ~180 mA | ~0.60 W | Included in Jetson domain |
+| CP2102 USB-TTL | Jetson USB | ~20 mA | ~0.07 W | Included in Jetson USB load |
+| STM32F411 | CP2102 3.3 V path / Jetson USB subtree | ~40 mA | ~0.13 W | 100 MHz estimate |
 
 ---
 
-## 6. STM32 Power Path
+## 6. Sensor and I²C Power Path
 
-The STM32F411 Black Pill is powered through the USB/TTL 5V interface during operation.
+The I²C expansion board and VL53 sensors are powered from the UPS 5V rail.
 
-![STM32F411 Black Pill](../engineering-journal/images/stm32f411_blackpill.jpg)
+| Component | Source / rail | Current | Power |
+|---|---|---:|---:|
+| VL53L4CD ×3 | UPS 5 V through I²C board | ~60 mA total | ~0.30 W |
+| VL53L8CH | UPS 5 V through I²C board | ~60 mA typical, ~120 mA peak | ~0.30 W typical |
+| I²C expansion board | UPS 5 V | ~10 mA to 20 mA | ~0.08 W |
 
-| STM32 parameter | Value |
-|---|---|
-| Controller | STM32F411 Black Pill |
-| Main role | Sensor acquisition, motor command execution, encoder reading |
-| Power source | USB/TTL 5V |
-| Logic level | 3.3 V |
-| Estimated current at 100 MHz | Approximately 10 mA with peripherals disabled |
-| Main interfaces | UART, I2C, PWM, GPIO, encoder inputs |
-
-The STM32 is responsible for low-level control. It receives commands from the Jetson and executes actions such as reading sensors, setting motor speed, moving by degrees, stopping the motor, and returning sensor data.
+The sensors communicate with the STM32 over I²C. Their power path is part of the logic/sensor domain, not the motor domain.
 
 ---
 
@@ -233,73 +245,139 @@ The robot uses an **MG996R servo** for steering. The steering signal is managed 
 | Servo voltage | 5 V |
 | Rated torque | 9.4 kg·cm at 4.8 V |
 | Control board | Pololu servo controller |
-| Servo controller power | Waveshare UPS |
+| Servo power source | Waveshare UPS 5 V rail |
 | Steering mechanism | Servo-actuated pushrod and tie-rod linkage |
 
-### 7.1 Servo Current Estimate
+### 7.1 Servo Current and Power Estimate
 
-| Servo condition | Estimated current |
-|---|---:|
-| Idle | ~10 mA |
-| No-load movement | 120 mA to 170 mA |
-| Normal load | 500 mA to 900 mA |
-| Stall / peak | 1.5 A to 2.5 A |
+| Servo condition | Estimated current | Estimated power at 5 V |
+|---|---:|---:|
+| Idle | ~10 mA | ~0.05 W |
+| No-load movement | 120 mA to 170 mA | ~0.6 W to 0.85 W |
+| Normal steering load | 0.5 A to 0.9 A | ~2.5 W to 4.5 W |
+| Stall / peak | Up to 2.5 A | ~12.5 W |
 
-The servo can draw high peak current when the front wheels are under load or when the steering linkage is blocked. For this reason, the steering mechanism must be mechanically smooth. Mechanical friction becomes electrical current. That is physics being annoying but honest.
+The servo can draw high peak current when the front wheels are under load or when the steering linkage is blocked. The linkage must be mechanically smooth, and the steering software should avoid commanding against mechanical limits.
 
 ---
 
-## 8. Power Budget
+## 8. Power Budget and Runtime
 
-The following table summarizes the estimated current and power consumption. Some values are estimates and must be replaced with measured values before final submission.
+The following table summarizes the traced component power budget.
 
-### 8.1 Estimated Power Budget
+### 8.1 Component Power Table
 
-| Subsystem | Voltage | Typical current | Peak current | Typical power | Peak power | Notes |
-|---|---:|---:|---:|---:|---:|---|
-| Jetson Orin Nano | 12 V | ~2.1 A | ~3.3 A | ~25 W | ~40 W | AI/vision workload estimate |
-| STM32F411 | 5 V input / 3.3 V logic | ~10 mA | [TODO] | ~0.05 W | [TODO] | MCU only estimate |
-| MG996R steering servo | 5 V | 0.5 A to 0.9 A | 1.5 A to 2.5 A | 2.5 W to 4.5 W | 7.5 W to 12.5 W | Steering load varies |
-| JGY-370B drive motor | 12 V | 0.2 A to 0.3 A | 1.3 A to 2.0 A | 2.4 W to 3.6 W | 15.6 W to 24 W | Through MD10C |
-| VL53L4CD ×3 | 3.3 V | 45 mA to 75 mA total | [TODO] | 0.15 W to 0.25 W | [TODO] | 15-25 mA each |
-| VL53L8CH ×1 | 3.3 V | [TODO] | [TODO] | [TODO] | [TODO] | Needs measured/spec value |
-| IMU | 3.3 V | [TODO] | [TODO] | [TODO] | [TODO] | Sensor polling |
-| Camera IMX477 | Jetson CSI | [TODO] | [TODO] | [TODO] | [TODO] | Powered by Jetson |
-| CP2102 USB-TTL | 5 V USB | [TODO] | [TODO] | [TODO] | [TODO] | Serial bridge |
-| Total electronics excluding drive motor | Mixed | [TODO] | [TODO] | [TODO] | [TODO] | To be measured |
-| Total full-system peak estimate | Mixed | — | — | — | ~76 W worst-case estimate | Jetson peak + servo stall + motor stall, unlikely continuous |
+| Component | Source / rail | Current | Power | Value type |
+|---|---|---:|---:|---|
+| NVIDIA Jetson Orin Nano | UPS 12 V | 2.3 A typical at 11.1 V | 25 W typical, 40 W peak | Spec / workload |
+| MG996R servo | UPS 5 V | 0.5–0.9 A running, 2.5 A stall | 2.5–4.5 W running, ~12.5 W stall | Datasheet |
+| VL53L4CD ×3 | UPS 5 V through I²C board | ~60 mA total | ~0.30 W | Datasheet |
+| VL53L8CH | UPS 5 V through I²C board | ~60 mA typical, peak ~120 mA | ~0.30 W typical | Datasheet |
+| I²C expansion board | UPS 5 V | ~10–20 mA | ~0.08 W | Estimate |
+| STM32F411 | CP2102 3.3 V from Jetson USB | ~40 mA | ~0.13 W | Datasheet, 100 MHz |
+| IMX477 camera | Jetson MIPI CSI | ~180 mA | ~0.60 W | Spec |
+| CP2102 USB-TTL | Jetson USB | ~20 mA | ~0.07 W | Datasheet |
+| JGY-370B drive motor | 3S motor battery through MD10C | 0.2–0.3 A running, 1.3–2.0 A stall | ~2.2–3.3 W running, ~14–22 W stall | Datasheet / estimate |
 
-The **worst-case peak estimate** combines Jetson high-performance load, servo stall, and motor stall. This is not expected to occur continuously, but it is useful for checking power-path margin.
+### 8.2 Double-Counting Note
 
-### 8.2 Runtime Estimate
+The IMX477, CP2102, and STM32F411 draw from the Jetson USB/CSI-related rails. They are listed for traceability, but their power is already inside the Jetson 25 W typical workload estimate.
 
-The expected runtime is approximately **20 to 30 minutes**, while each WRO challenge round is **3 minutes**. This gives enough margin for one official attempt, but practice sessions require recharging or battery replacement planning.
+### 8.3 UPS 5 V Rail Check
+
+The UPS 5 V rail is rated for approximately:
+
+```text
+5 V × 5 A = 25 W
+```
+
+Expected 5 V peak load:
+
+```text
+MG996R servo stall: approximately 2.5 A
+Sensors + I²C board: approximately 0.14 A
+Total 5 V peak: approximately 2.6 A
+```
+
+This is within the 5 A UPS 5 V rail rating.
+
+### 8.4 UPS Peak-Current Sag Check
+
+The worst-case UPS pack draw happens if the Jetson reaches a peak workload while the steering servo is near stall:
+
+```text
+Jetson peak: approximately 40 W
+Servo stall reflected to battery side: approximately 1.3 A equivalent
+Estimated UPS pack peak draw: approximately 4.5 A to 5 A
+```
+
+This is approximately a 4C peak draw for 1200 mAh cells. This is the main remaining power risk because it may cause voltage sag if the cells cannot supply the peak current comfortably.
+
+### 8.5 Runtime Estimate
 
 | Runtime parameter | Value |
 |---|---:|
-| Expected runtime | 20 to 30 minutes |
-| WRO round duration | 3 minutes |
-| Runtime margin for one run | Good |
-| Recommended practice strategy | Charge between sessions and monitor voltage |
+| UPS average load | ~29 W |
+| UPS energy | ~13.3 Wh |
+| UPS runtime at 85% efficiency | ~24 min |
+| Motor battery energy | ~13.3 Wh |
+| Motor runtime estimate at ~0.6 A average | ~2 hr motor-time |
+| WRO round duration | 3 min |
+| UPS margin | ~8× one round |
+| Motor battery margin | ~40× one round |
 
-### 8.3 Power Measurement Plan
+The runtime calculation shows that both battery systems have enough energy margin for a 3-minute WRO round.
 
-Before final submission, the team should measure:
+### 8.6 Remaining Power Verification Item
+
+The only open power item is empirical verification of peak-current sag during simultaneous Jetson high load and steering servo high load.
+
+Test condition:
+
+```text
+YOLO11n running
+camera active
+serial polling active
+servo performing aggressive steering
+robot driving on the mat
+```
+
+Watch for:
+
+```text
+Jetson reboot
+camera dropout
+USB serial disconnect
+STM32 reset
+servo glitch
+YOLO process interruption
+```
+
+If voltage sag is observed, recommended improvements are:
+
+```text
+use higher-discharge 18650 cells
+add a 1000 µF or larger capacitor across the servo 5 V rail
+check connector resistance and wire gauge
+```
+
+### 8.7 Power Measurement Plan
+
+Before final submission, the team should verify:
 
 | Test case | Measurement needed |
 |---|---|
 | Robot idle, powered on | Baseline current |
-| Jetson booted, no model | Jetson idle consumption |
-| Camera only | Vision capture consumption |
-| YOLO inference active | AI workload consumption |
-| Servo sweeping left/right | Steering current |
+| YOLO11n inference active | Jetson workload stability |
+| Servo aggressive left/right steering | 5 V rail stability |
 | Motor forward continuous | Drive current |
-| Motor acceleration from stop | Peak motor current |
-| All sensors ranging | Sensor current |
-| Full lap test | Real competition current |
-| Battery voltage before/after 3 minutes | Voltage drop and remaining margin |
+| Motor acceleration from stop | Motor peak current |
+| All sensors ranging | Sensor rail stability |
+| Full 3-minute run | Real competition runtime and voltage drop |
+| Battery voltage before/after 3 minutes | Remaining margin |
+| Aggressive steering + YOLO active | Confirm no UPS voltage sag/reboot |
 
-These measurements will make the power budget stronger and support the WRO documentation criterion for power reasoning.
+These measurements support the WRO documentation criterion for power reasoning and close the remaining power-risk item.
 
 ---
 
