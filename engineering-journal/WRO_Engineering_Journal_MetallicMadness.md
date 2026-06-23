@@ -1,9 +1,5 @@
 # Engineering Journal - MetallicMadness / ARBIBOT
 
-![ARBIBOT promotional photo](images/promo01.png)
-
-**Figure 0. ARBIBOT on the WRO Future Engineers field mat.**
-
 **Competition:** WRO 2026 Future Engineers - Self-Driving Cars  
 **Team:** MetallicMadness  
 **Robot:** ARBIBOT  
@@ -78,7 +74,7 @@ Separate power domains:
 - Jetson/logic power: Waveshare UPS -> Jetson + camera + Pololu servo controller
 ```
 
-![STM32 wiring diagram](images/stm32_wiring_diagram.jpg)
+![STM32 wiring diagram](wro_journal_assets/stm32_wiring_diagram.jpg)
 
 **Figure 1. STM32F411 wiring and peripheral integration diagram.**
 
@@ -108,7 +104,7 @@ The vehicle uses a **servo-actuated front steering mechanism**. The steering ser
 
 The mechanism is best described as a **custom servo-driven pushrod and tie-rod steering linkage**. It is Ackermann-inspired, but it should not be claimed as a validated Ackermann geometry until the inner and outer wheel angles are measured during steering.
 
-![Steering linkage](images/steering_linkage_photo.jpg)
+![Steering linkage](wro_journal_assets/steering_linkage_photo.jpg)
 
 **Figure 2. Steering linkage close-up showing pushrod and tie-rod connection.**
 
@@ -127,7 +123,7 @@ Encoder characteristics provided by the team:
 | Response frequency | 100 kHz |
 | Firmware use | Distance by degrees and RPM estimation |
 
-![Motor encoder wiring](images/motor_encoder_wiring.jpg)
+![Motor encoder wiring](wro_journal_assets/motor_encoder_wiring.jpg)
 
 **Figure 3. Encoder wiring reference for the JGY-370 motor.**
 
@@ -157,11 +153,11 @@ ARBIBOT uses separated power paths for the motor system and the Jetson/logic sys
 | Jetson / vision power | Jetson Orin Nano and CSI camera | Waveshare UPS module, Jetson powered at 12 V |
 | Steering power | Pololu servo controller and MG996R servo | Powered from Waveshare UPS system |
 
-![BMS module](images/bms3s_20a.jpg)
+![BMS module](wro_journal_assets/bms3s_20a.jpg)
 
 **Figure 4. BMS 3S 20 A module used for motor battery protection.**
 
-![Waveshare UPS module](images/waveshare_ups.jpg)
+![Waveshare UPS module](wro_journal_assets/waveshare_ups.jpg)
 
 **Figure 5. Waveshare UPS module used for the Jetson power domain.**
 
@@ -204,15 +200,15 @@ The right-side VL53L4CD pair is used to estimate heading relative to the wall. T
 
 **Note:** final documentation should clarify whether addresses are written as 7-bit or 8-bit I2C addresses, and whether the VL53L8CH is isolated on a separate I2C bus. This avoids confusion because several ST ToF sensors share default address conventions.
 
-![I2C expansion board](images/i2c_expansion_board.jpg)
+![I2C expansion board](wro_journal_assets/i2c_expansion_board.jpg)
 
 **Figure 6. I2C expansion board used to simplify shared SDA/SCL and power distribution.**
 
-![VL53L4CD](images/vl53l4cd.jpg)
+![VL53L4CD](wro_journal_assets/vl53l4cd.jpg)
 
 **Figure 7. VL53L4CD ToF sensor module used for side/wall distance readings.**
 
-![VL53L8CH](images/vl53l8ch.jpg)
+![VL53L8CH](wro_journal_assets/vl53l8ch.jpg)
 
 **Figure 8. VL53L8CH front matrix ToF sensor module used for front distance perception.**
 
@@ -236,7 +232,7 @@ The Jetson Orin Nano runs the high-level autonomous driving stack:
 - Navigation decisions through PID/PDI control and threshold state logic.
 - DD-UART command generation to the STM32.
 
-![Jetson Orin Nano](images/jetson_orin_nano.jpg)
+![Jetson Orin Nano](wro_journal_assets/jetson_orin_nano.jpg)
 
 **Figure 9. NVIDIA Jetson Orin Nano selected for AI inference and high-level navigation.**
 
@@ -252,11 +248,11 @@ The STM32F411 runs the low-level control and sensor acquisition stack:
 - Executes continuous motor commands, stop commands, set-speed commands, and move-by-degrees commands.
 - Parses DD-UART frames, validates checksum, dispatches commands, and returns response frames.
 
-![STM32F411 Black Pill](images/stm32f411_blackpill.jpg)
+![STM32F411 Black Pill](wro_journal_assets/stm32f411_blackpill.jpg)
 
 **Figure 10. STM32F411 Black Pill used as low-level peripheral controller.**
 
-![Cytron MD10C motor driver](images/cytron_md10c.jpg)
+![Cytron MD10C motor driver](wro_journal_assets/cytron_md10c.jpg)
 
 **Figure 11. Cytron MD10C motor driver used to control the 12 V DC drive motor.**
 
@@ -520,15 +516,15 @@ pip install -r requirements.txt
 
 ## 13. Appendix A - Component Image References
 
-![CP2102 USB-TTL](images/cp2102_usb_ttl.jpg)
+![CP2102 USB-TTL](wro_journal_assets/cp2102_usb_ttl.jpg)
 
 **Figure A1. CP2102 USB-TTL module used for serial communication/debugging.**
 
-![Pololu servo controller](images/pololu_servo_controller.jpg)
+![Pololu servo controller](wro_journal_assets/pololu_servo_controller.jpg)
 
 **Figure A2. Pololu servo controller used for steering servo control.**
 
-![STM32 pinout](images/stm32f411ceu6.jpg)
+![STM32 pinout](wro_journal_assets/stm32f411ceu6.jpg)
 
 **Figure A3. STM32F411CEU6 pinout reference.**
 

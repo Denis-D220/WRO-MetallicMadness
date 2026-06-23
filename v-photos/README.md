@@ -17,7 +17,7 @@ The images document the robot from all required external views and include addit
 | `car-top.png` | Top view | Shows the general layout of the robot from above, including chassis footprint and component placement. |
 | `car-bottom.png` | Bottom view | Shows the underside of the vehicle, including the chassis base, wheel layout, drive axle, motor position, and steering layout. |
 | `front-bumper.png` | Front sensor close-up | Shows the front bumper and sensor mounting area. This image documents the front ToF sensor placement and bumper design. |
-| `motor-stearing.png` | Motor and steering mechanism | Shows the robot chassis with the installed rear drive motor, rear axle, wheels, steering servo, steering linkage, and front wheel steering assembly. |
+| `motor-steering.png` | Motor and steering mechanism | Shows the robot chassis with the installed rear drive motor, rear axle, wheels, steering servo, steering linkage, and front wheel steering assembly. |
 | `motor.png` | Motor component reference | Shows the JGY-370B worm gear DC motor with encoder used as the drive motor reference component. |
 
 ---
@@ -45,14 +45,14 @@ The additional mechanical close-up images are:
 
 ```text
 front-bumper.png
-motor-stearing.png
+motor-steering.png
 motor.png
 ```
 
 These images are included because they document important engineering decisions:
 
 - `front-bumper.png` shows the front sensor and bumper layout.
-- `motor-stearing.png` shows the installed drive motor, rear axle, steering servo, and linkage system in the actual robot chassis.
+- `motor-steering.png` shows the installed drive motor, rear axle, steering servo, and linkage system in the actual robot chassis.
 - `motor.png` shows the motor component used for the drive system.
 
 ---
@@ -76,7 +76,7 @@ Recommended image references:
 
 ![Front bumper and sensor mount](../v-photos/front-bumper.png)
 
-![Motor and steering mechanism](../v-photos/motor-stearing.png)
+![Motor and steering mechanism](../v-photos/motor-steering.png)
 
 ![Drive motor reference](../v-photos/motor.png)
 ```
