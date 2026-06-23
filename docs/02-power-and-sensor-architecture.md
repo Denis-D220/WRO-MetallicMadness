@@ -46,7 +46,7 @@ STM32F411
     |
     | I2C bus + XSHUT address control
     v
-VL53L4CD and VL53L8CH Distance Sensors
+VL53L4CD and VL53L8CX Distance Sensors
 
 Jetson Orin Nano
     |
@@ -192,7 +192,7 @@ Waveshare UPS
     |
     +--> 5 V -> MG996R steering servo
     |
-    +--> 5 V -> I²C expansion board -> 3× VL53L4CD + VL53L8CH
+    +--> 5 V -> I²C expansion board -> 3× VL53L4CD + VL53L8CX
 ```
 
 The Jetson internally powers the IMX477 camera, CP2102 USB-TTL module, and STM32F411 subtree through its USB/CSI-related rails. These devices are listed separately for traceability, but their power draw is already included in the Jetson workload estimate.
@@ -226,7 +226,7 @@ The I²C expansion board and VL53 sensors are powered from the UPS 5V rail.
 | Component | Source / rail | Current | Power |
 |---|---|---:|---:|
 | VL53L4CD ×3 | UPS 5 V through I²C board | ~60 mA total | ~0.30 W |
-| VL53L8CH | UPS 5 V through I²C board | ~60 mA typical, ~120 mA peak | ~0.30 W typical |
+| VL53L8CX | UPS 5 V through I²C board | ~60 mA typical, ~120 mA peak | ~0.30 W typical |
 | I²C expansion board | UPS 5 V | ~10 mA to 20 mA | ~0.08 W |
 
 The sensors communicate with the STM32 over I²C. Their power path is part of the logic/sensor domain, not the motor domain.
@@ -272,7 +272,7 @@ The following table summarizes the traced component power budget.
 | NVIDIA Jetson Orin Nano | UPS 12 V | 2.3 A typical at 11.1 V | 25 W typical, 40 W peak | Spec / workload |
 | MG996R servo | UPS 5 V | 0.5–0.9 A running, 2.5 A stall | 2.5–4.5 W running, ~12.5 W stall | Datasheet |
 | VL53L4CD ×3 | UPS 5 V through I²C board | ~60 mA total | ~0.30 W | Datasheet |
-| VL53L8CH | UPS 5 V through I²C board | ~60 mA typical, peak ~120 mA | ~0.30 W typical | Datasheet |
+| VL53L8CX | UPS 5 V through I²C board | ~60 mA typical, peak ~120 mA | ~0.30 W typical | Datasheet |
 | I²C expansion board | UPS 5 V | ~10–20 mA | ~0.08 W | Estimate |
 | STM32F411 | CP2102 3.3 V from Jetson USB | ~40 mA | ~0.13 W | Datasheet, 100 MHz |
 | IMX477 camera | Jetson MIPI CSI | ~180 mA | ~0.60 W | Spec |
@@ -450,7 +450,7 @@ ARBIBOT uses time-of-flight distance sensors for wall following, obstacle distan
 | Sensor type | Quantity | Main purpose |
 |---|---:|---|
 | VL53L4CD | 3 | Left/right side distance, wall following, side correction |
-| VL53L8CH | 1 | Front distance matrix, obstacle/front-wall detection |
+| VL53L8CX | 1 | Front distance matrix, obstacle/front-wall detection |
 | IMU | 1 | Gyroscope/accelerometer data |
 | Camera IMX477 | 1 | YOLO pillar detection and corner/line detection |
 
@@ -492,22 +492,22 @@ This is better than using only one side sensor because a single distance value c
 
 ---
 
-## 13. VL53L8CH Front Matrix Sensor
+## 13. VL53L8CX Front Matrix Sensor
 
-The robot uses one **ST VL53L8CH** front sensor.
+The robot uses one **ST VL53L8CX** front sensor.
 
-![VL53L8CH sensor](../engineering-journal/images/vl53l8ch.jpg)
+![VL53L8CX sensor](../engineering-journal/images/vl53l8ch.jpg)
 
 | Parameter | Value |
 |---|---|
-| Sensor | ST VL53L8CH |
+| Sensor | ST VL53L8CX |
 | Placement | Front bumper, center/front |
 | Interface | I2C |
 | Main use | Front obstacle and wall distance matrix |
 | Software use | Front barrier detection and corner trigger support |
 | I2C address | 0x52 listed in current notes; verify against final firmware/address map |
 
-The VL53L8CH provides a distance matrix instead of a single point distance. In the software, the front matrix is reduced to a usable front-barrier distance. The front matrix is especially useful when detecting the approach to a wall or corner.
+The VL53L8CX provides a distance matrix instead of a single point distance. In the software, the front matrix is reduced to a usable front-barrier distance. The front matrix is especially useful when detecting the approach to a wall or corner.
 
 ### 13.1 Matrix Sensor Lessons Learned
 
@@ -570,20 +570,20 @@ A Python test program was used to read all sensors each time the car was moved t
 
 ### 16.1 Calibration Table Template
 
-| Real distance | Left VL53L4CD | Right-front VL53L4CD | Right-rear VL53L4CD | Front VL53L8CH | Notes |
+| Real distance | Left VL53L4CD | Right-front VL53L4CD | Right-rear VL53L4CD | Front VL53L8CX | Notes |
 |---:|---:|---:|---:|---:|---|
-| 120 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 110 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 100 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 90 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 80 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 70 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 60 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 50 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 40 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 30 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 20 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 10 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
+| 120 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 110 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 100 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 90 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 80 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 70 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 60 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 50 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 40 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 30 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 20 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 10 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
 
 ### 16.2 Calibration Goals
 
@@ -604,9 +604,9 @@ The calibration process is used to determine:
 |---|---|---|
 | Wall following | Right-front and right-rear VL53L4CD | Maintain distance and heading relative to right wall |
 | Side correction | Right-front and right-rear VL53L4CD | Correct angle using RF-RR difference |
-| Obstacle distance | VL53L4CD and VL53L8CH | Detect nearby objects and front barriers |
+| Obstacle distance | VL53L4CD and VL53L8CX | Detect nearby objects and front barriers |
 | Parking support | Side/front ToF sensors | Estimate position relative to wall/parking area |
-| Corner detection | Camera + VL53L8CH front matrix | Front matrix helps detect front wall/corner approach |
+| Corner detection | Camera + VL53L8CX front matrix | Front matrix helps detect front wall/corner approach |
 | Pillar color classification | Jetson camera + YOLO | Detect red and green traffic signs |
 
 The current notes indicate that side sensors are not the primary corner detection system. Corner detection is mainly handled by camera and front matrix logic.
@@ -659,7 +659,7 @@ The current technical documentation already includes several supporting images. 
 | MG996R servo | 1 | Front steering actuator |
 | Pololu servo controller | 1 | Servo signal/control interface |
 | VL53L4CD | 3 | Side/front time-of-flight sensors |
-| VL53L8CH | 1 | Front matrix time-of-flight sensor |
+| VL53L8CX | 1 | Front matrix time-of-flight sensor |
 | IMX477 camera | 1 | Image capture for YOLO detection |
 | I2C expansion board | 1 | Sensor bus/power distribution |
 | CP2102 USB-TTL | 1 | Serial communication / STM32 power interface |
@@ -681,7 +681,7 @@ The following information should be added when measured or confirmed:
 | Actual Jetson current during YOLO inference | Validates power budget |
 | Actual motor current during acceleration | Validates motor/BMS/driver margin |
 | Actual servo current while steering on track | Confirms UPS/regulator capacity |
-| VL53L8CH current draw | Completes sensor budget |
+| VL53L8CX current draw | Completes sensor budget |
 | Camera current draw | Completes Jetson subsystem budget |
 | Final I2C address map from firmware | Prevents documentation mismatch |
 | Measured runtime under competition workload | Validates battery sizing |
@@ -694,7 +694,7 @@ The following information should be added when measured or confirmed:
 
 ARBIBOT uses a separated power architecture to improve reliability during autonomous driving. The motor system is powered through a 3S Li-ion battery pack, BMS 3S 20A, and Cytron MD10C driver. The Jetson Orin Nano uses an independent Waveshare UPS module, reducing the risk of AI/vision resets caused by motor current spikes. The STM32F411 handles low-level sensing and motor control, while the Jetson handles vision and navigation.
 
-The sensor architecture combines three VL53L4CD sensors, one VL53L8CH matrix sensor, an IMX477 camera, and an IMU. The right-front and right-rear ToF sensors provide wall-following and heading correction. The front matrix sensor supports front-barrier and corner-trigger detection. The camera and YOLO model provide red/green pillar classification and line/corner detection.
+The sensor architecture combines three VL53L4CD sensors, one VL53L8CX matrix sensor, an IMX477 camera, and an IMU. The right-front and right-rear ToF sensors provide wall-following and heading correction. The front matrix sensor supports front-barrier and corner-trigger detection. The camera and YOLO model provide red/green pillar classification and line/corner detection.
 
 The strongest design decisions in this subsystem are:
 

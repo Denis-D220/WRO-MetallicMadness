@@ -70,7 +70,7 @@ No single sensor was trusted to solve the whole challenge. ARBIBOT combines:
 
 - camera and YOLO for pillars and visual features,
 - VL53L4CD side distance sensors for wall following,
-- VL53L8CH front matrix sensor for front barrier and corner detection,
+- VL53L8CX front matrix sensor for front barrier and corner detection,
 - motor encoder for movement feedback,
 - IMU data for motion information,
 - state-machine logic for context.
@@ -155,7 +155,7 @@ The robot dimensions are approximately:
 | Height | 18 cm |
 | Weight | 1.35 kg |
 | Wheelbase | 13.9 cm |
-| Track width | [TODO: measure final track width] |
+| Track width | 13.5 cm center-to-center |
 
 ### Alternatives considered
 
@@ -296,7 +296,7 @@ Ultrasonic sensors were tested and rejected because their readings were less sui
 | Sensor | Quantity | Main use |
 |---|---:|---|
 | VL53L4CD | 3 | Side/front distance sensing, wall following, correction |
-| VL53L8CH / VL53L7CX-style matrix | 1 | Front matrix distance sensing |
+| VL53L8CX / VL53L7CX-style matrix | 1 | Front matrix distance sensing |
 | Camera | 1 | Pillar and visual feature detection |
 | IMU | 1 | Motion information |
 | Motor encoder | 1 | Wheel feedback |
@@ -360,7 +360,7 @@ Two side sensors created a simple and practical heading signal without needing c
 
 ### Decision
 
-Use the VL53L8CH front matrix sensor to help detect front barriers and corners.
+Use the VL53L8CX front matrix sensor to help detect front barriers and corners.
 
 ### Reasoning
 
@@ -746,7 +746,7 @@ The final robot is the result of iteration. Each failure reduced uncertainty and
 | Drive motor | Encoder worm gear motor | Torque and feedback | Lower maximum speed |
 | Steering | Servo pushrod linkage | Simple and adjustable | Requires mechanical tuning |
 | Distance sensors | VL53 ToF sensors | Better precision | I2C address/XSHUT complexity |
-| Front sensing | VL53L8CH matrix | Multi-zone front detection | More complex filtering |
+| Front sensing | VL53L8CX matrix | Multi-zone front detection | More complex filtering |
 | Vision | YOLO | Robust red/green recognition | Requires model training and GPU |
 | Power | Separate domains | More reliable electronics | More wiring and weight |
 | Serial protocol | Binary DD-UART | Compact and reliable | Requires custom parser |
@@ -854,7 +854,7 @@ If development time allows, the next system-level improvements are:
    Save CSV logs for distance sensors, motor commands, YOLO detections, and state transitions.
 
 2. **More measured tuning values**  
-   Replace `[TODO]` values with final controller gains, speed settings, and timing thresholds.
+   Record future controller-gain changes, speed settings, and timing thresholds when those values are exported from the final source code.
 
 3. **Optimized image/video repository size**  
    Keep high-resolution evidence but add compressed documentation versions.

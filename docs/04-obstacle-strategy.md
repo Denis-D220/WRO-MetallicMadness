@@ -43,7 +43,7 @@ ARBIBOT combines camera perception, distance sensors, and internal state trackin
 | Right-front distance | VL53L4CD through STM32 | Wall distance and heading correction |
 | Right-rear distance | VL53L4CD through STM32 | Heading relative to right wall |
 | Left distance | VL53L4CD through STM32 | Side clearance / fallback information |
-| Front matrix distance | VL53L8CH through STM32 | Front obstacle / corner awareness |
+| Front matrix distance | VL53L8CX through STM32 | Front obstacle / corner awareness |
 | Encoder feedback | Motor encoder through STM32 | Speed and movement validation |
 | Internal state | Jetson state machine | Prevent conflicting actions |
 
@@ -775,16 +775,16 @@ The following tests should be used to validate the obstacle strategy.
 
 | Test ID | Scenario | Expected behavior | Result |
 |---|---|---|---|
-| OBS-01 | Single red pillar in center of lane | Robot passes on right | [TODO] |
-| OBS-02 | Single green pillar in center of lane | Robot passes on left | [TODO] |
-| OBS-03 | Red pillar near left side | Robot still passes on right without wall hit | [TODO] |
-| OBS-04 | Green pillar near right side | Robot still passes on left without wall hit | [TODO] |
-| OBS-05 | Two pillars visible | Robot chooses nearest/largest valid one | [TODO] |
-| OBS-06 | Pillar appears during corner cooldown | Robot prioritizes corner, then resumes detection | [TODO] |
-| OBS-07 | YOLO detection flickers | Debounce prevents unstable steering | [TODO] |
-| OBS-08 | Pillar temporarily lost while close | Last-valid memory keeps correction briefly | [TODO] |
-| OBS-09 | High steering error | Robot clamps steering and reduces speed | [TODO] |
-| OBS-10 | Full obstacle lap | Robot completes lap while obeying signs | [TODO] |
+| OBS-01 | Single red pillar in center of lane | Robot passes on right | Tested as part of Obstacle Challenge tuning |
+| OBS-02 | Single green pillar in center of lane | Robot passes on left | Tested as part of Obstacle Challenge tuning |
+| OBS-03 | Red pillar near left side | Robot still passes on right without wall hit | Not recorded yet |
+| OBS-04 | Green pillar near right side | Robot still passes on left without wall hit | Not recorded yet |
+| OBS-05 | Two pillars visible | Robot chooses nearest/largest valid one | Not recorded yet |
+| OBS-06 | Pillar appears during corner cooldown | Robot prioritizes corner, then resumes detection | Not recorded yet |
+| OBS-07 | YOLO detection flickers | Debounce prevents unstable steering | Not recorded yet |
+| OBS-08 | Pillar temporarily lost while close | Last-valid memory keeps correction briefly | Not recorded yet |
+| OBS-09 | High steering error | Robot clamps steering and reduces speed | Not recorded yet |
+| OBS-10 | Full obstacle lap | Robot completes lap while obeying signs | Current Obstacle Challenge success rate: 50% |
 
 ---
 
@@ -795,18 +795,18 @@ The following parameters should be listed and updated as the software is tuned.
 | Parameter | Current / planned value | Purpose |
 |---|---:|---|
 | Pillar confidence threshold | 0.30 | Minimum YOLO confidence for pillar detection |
-| Minimum active area | [TODO] | Avoid reacting to far/small detections |
-| Lost target timeout | [TODO] | Time to hold last valid detection |
-| Debounce entry frames | [TODO] | Frames required to confirm pillar |
-| Debounce exit frames | [TODO] | Frames required to confirm pillar exit |
-| PDI Kp | [TODO] | Proportional steering response |
-| PDI Ki | [TODO] | Integral correction |
-| PDI Kd | [TODO] | Derivative damping |
-| Max steering clamp | [TODO] | Prevent full-lock steering |
-| Obstacle speed | [TODO] | Speed while passing pillar |
-| Normal straight speed | [TODO] | Speed while no obstacle is active |
-| Target right wall distance | [TODO] | Lane-following distance |
-| RF-RR heading gain | [TODO] | Parallel-wall correction |
+| Minimum active area | Not recorded yet | Avoid reacting to far/small detections |
+| Lost target timeout | Not recorded yet | Time to hold last valid detection |
+| Debounce entry frames | Not recorded yet | Frames required to confirm pillar |
+| Debounce exit frames | Not recorded yet | Frames required to confirm pillar exit |
+| PDI Kp | Not recorded in documentation | Proportional steering response |
+| PDI Ki | Not recorded in documentation | Integral correction |
+| PDI Kd | Not recorded in documentation | Derivative damping |
+| Max steering clamp | Not recorded yet | Prevent full-lock steering |
+| Obstacle speed | Not recorded in documentation | Speed while passing pillar |
+| Normal straight speed | Not recorded in documentation | Speed while no obstacle is active |
+| Target right wall distance | Not recorded in documentation | Lane-following distance |
+| RF-RR heading gain | Not recorded in documentation | Parallel-wall correction |
 
 Documenting these values is important because it makes the obstacle strategy reproducible and shows the tuning process.
 

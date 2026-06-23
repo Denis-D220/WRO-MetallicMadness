@@ -35,7 +35,7 @@ ARBIBOT is divided into the following hardware subsystems:
 | Low-level control | STM32F411 Black Pill |
 | Motor drive | Cytron MD10C, JGY-370B motor, encoder |
 | Steering | MG996R servo, Pololu servo controller |
-| Distance sensing | VL53L4CD sensors, VL53L8CH front matrix sensor |
+| Distance sensing | VL53L4CD sensors, VL53L8CX front matrix sensor |
 | Power | 3S 18650 motor battery, 3S BMS, Waveshare UPS module |
 | Communication | CP2102 USB-TTL, USB serial links, I2C bus |
 | Mechanical | 3D-printed chassis, wheels, steering linkage, bumper |
@@ -54,7 +54,7 @@ ARBIBOT is divided into the following hardware subsystems:
 | 6 | MG996R servo | 1 | Front steering actuator | 5V from Waveshare UPS | 0.5-0.9A run, 2.5A stall | Servo PWM via Pololu controller |
 | 7 | Pololu Micro Maestro servo controller | 1 | Dedicated servo pulse controller | 5V logic / servo power input depending wiring | Controller low; servo current handled by servo power path | USB serial / TTL serial, servo PWM |
 | 8 | VL53L4CD ToF distance sensor | 3 | Side/front distance sensing and wall following | 5V module rail through I²C board / 3.3V logic internally | ~60mA total / ~0.30W | I2C + XSHUT |
-| 9 | VL53L8CH front matrix ToF sensor | 1 | Front barrier and corner matrix sensing | 5V module rail through I²C board / 3.3V logic internally | ~60mA typical, ~120mA peak / ~0.30W typical | I2C + optional XSHUT |
+| 9 | VL53L8CX front matrix ToF sensor | 1 | Front barrier and corner matrix sensing | 5V module rail through I²C board / 3.3V logic internally | ~60mA typical, ~120mA peak / ~0.30W typical | I2C + optional XSHUT |
 | 10 | CP2102 USB to TTL module | 1 | USB serial bridge for STM32 / debugging | Powered from Jetson USB | ~20mA / ~0.07W, included in Jetson domain | USB, UART TX/RX |
 | 11 | Waveshare UPS module | 1 | Power supply for logic and steering domain | 3 × 18650, 11.1V nominal / 12.6V full | UPS 5V rail rated 5A / 25W | Power + optional I2C |
 | 12 | 3S 18650 motor battery pack | 1 | Main drive motor power source | 11.1V nominal, 12.6V full | 1200mAh / ~13.3Wh | Power |
@@ -111,7 +111,7 @@ The Jetson was selected because ARBIBOT uses AI-based vision. YOLO inference and
 | Subsystem | Vision |
 | Function | Provides front visual input for pillar detection, line/corner detection, and navigation |
 | Voltage | Powered directly from Jetson camera interface |
-| Current | [TODO: verify datasheet/module value] |
+| Current | ~180 mA / ~0.60 W, included in Jetson domain |
 | Interface | MIPI CSI-2, 22-pin 0.5mm pitch cable |
 | Connected to | NVIDIA Jetson Orin Nano |
 | Used by | YOLO models, OpenCV frame processing |
@@ -139,7 +139,7 @@ The camera gives semantic information that distance sensors cannot provide, espe
 | Function | Reads sensors, manages I2C, controls motor driver, reads encoder, handles UART protocol |
 | Input voltage | 5V from USB/TTL power path |
 | Logic voltage | 3.3V |
-| Estimated current | ~10mA estimate at 100MHz with peripherals disabled; final value should be measured |
+| Estimated current | ~40 mA / ~0.13 W estimate at 100 MHz |
 | Interface | USB/UART, I2C, GPIO, PWM, EXTI |
 | Connected to | VL53 sensors, MD10C motor driver, motor encoder, Jetson serial link |
 | Firmware role | Command parser, sensor acquisition, motor control, response frames |
@@ -313,7 +313,7 @@ A dedicated servo controller reduces timing complexity and provides reliable ste
 | Right-front VL53L4CD | Front/right bumper area | Right wall distance | `0x54` | PA7 |
 | Right-rear VL53L4CD | Middle/right side between wheels | Right heading correction | `0x56` | PB14 |
 
-> Address map should be verified against final STM32 firmware.
+> Address map confirmed against the current firmware mapping.
 
 ### Reason for use
 
@@ -321,16 +321,16 @@ VL53L4CD sensors provide more precise short-range distance measurements than ult
 
 ---
 
-## 4.9 VL53L8CH / VL53L7CX-Style Front Matrix Sensor
+## 4.9 VL53L8CX / VL53L7CX-Style Front Matrix Sensor
 
 | Field | Value |
 |---|---|
-| Component | VL53L8CH front matrix ToF sensor |
+| Component | VL53L8CX front matrix ToF sensor |
 | Quantity | 1 |
 | Subsystem | Front distance sensing |
 | Function | Front matrix distance sensing for front wall, obstacles, and corner trigger support |
 | Voltage | 3.3V logic/module dependent |
-| Current | [TODO: verify final module value] |
+| Current | ~60 mA typical, ~120 mA peak; ~0.30 W typical |
 | Interface | I2C |
 | Connected to | STM32F411 |
 | Documentation links | `docs/02-power-and-sensor-architecture.md`, `docs/07-calibration-procedures.md` |
@@ -359,7 +359,7 @@ The front matrix sensor provides multiple distance zones instead of a single fro
 | Subsystem | Communication / debugging |
 | Function | USB-to-serial bridge for STM32 communication or testing |
 | Voltage | USB 5V input, TTL output depending module configuration |
-| Current | [TODO: verify] |
+| Current | ~20 mA / ~0.07 W, included in Jetson USB domain |
 | Interface | USB, UART TX/RX |
 | Connected to | Development computer, STM32, or Jetson depending test setup |
 | Documentation links | `schemes/full-wiring-diagram.png`, `docs/03-software-architecture.md` |
@@ -482,11 +482,11 @@ The I2C expansion board helps keep wiring cleaner and makes sensor connections e
 | Measurement | Value |
 |---|---:|
 | Length | 25 cm |
-| Width | 15.6 cm |
+| Width | 16.0 cm outside wheel-to-wheel / 15.6 cm chassis reference |
 | Height | 18 cm |
 | Weight | 1.35 kg |
 | Wheelbase | 13.9 cm |
-| Track width | [TODO: measure final] |
+| Track width | 13.5 cm center-to-center |
 
 ### Reason for use
 
@@ -506,7 +506,7 @@ The I2C expansion board helps keep wiring cleaner and makes sensor connections e
 | Current | N/A |
 | Interface | Mechanical |
 | Connected to | Chassis, VL53 sensors |
-| Documentation links | `v-photos/front-bumper.jpeg`, `schemes/sensor-placement-diagram.png` |
+| Documentation links | `v-photos/front-bumper.png`, `schemes/sensor-placement-diagram.png` |
 
 ### Reason for use
 
@@ -598,7 +598,7 @@ Waveshare UPS, 3 × 18650 cells
     |
     +--> 5V rail -> MG996R steering servo
     |
-    +--> 5V rail -> I²C expansion board -> 3× VL53L4CD + VL53L8CH
+    +--> 5V rail -> I²C expansion board -> 3× VL53L4CD + VL53L8CX
 ```
 
 | Component | Voltage / source | Current / power notes |
@@ -607,7 +607,7 @@ Waveshare UPS, 3 × 18650 cells
 | Jetson Orin Nano | UPS 12V path | 25W typical, 40W peak |
 | MG996R servo | UPS 5V rail | 0.5-0.9A run, 2.5A stall |
 | VL53L4CD ×3 | UPS 5V through I²C board | ~60mA total / ~0.30W |
-| VL53L8CH | UPS 5V through I²C board | ~60mA typical, ~120mA peak |
+| VL53L8CX | UPS 5V through I²C board | ~60mA typical, ~120mA peak |
 | I²C expansion board | UPS 5V | ~10-20mA / ~0.08W |
 | IMX477 camera | Jetson MIPI CSI | ~180mA / ~0.60W, included in Jetson domain |
 | CP2102 USB-TTL | Jetson USB | ~20mA / ~0.07W, included in Jetson domain |
@@ -683,14 +683,14 @@ These values are traced estimates based on the current ARBIBOT power architectur
 | Subsystem | Quantity | Typical current / power | Peak current / power | Notes |
 |---|---:|---:|---:|---|
 | Jetson Orin Nano | 1 | 25W typical | 40W peak | Includes vision workload and Jetson-powered subtree |
-| IMX477 camera | 1 | ~180mA / ~0.60W | [TODO: verify peak] | Powered from Jetson; listed for traceability |
-| STM32F411 | 1 | ~40mA / ~0.13W | [TODO: verify peak] | Powered through CP2102 / Jetson USB subtree |
+| IMX477 camera | 1 | ~180mA / ~0.60W | Not recorded yet | Powered from Jetson; listed for traceability |
+| STM32F411 | 1 | ~40mA / ~0.13W | Not recorded yet | Powered through CP2102 / Jetson USB subtree |
 | MG996R servo | 1 | 0.5-0.9A / 2.5-4.5W | 2.5A / ~12.5W stall | Main 5V peak-current risk |
 | JGY-370B motor | 1 | 0.2-0.3A / ~2.2-3.3W | 1.3-2.0A / ~14-22W stall | Separate 3S motor battery path |
-| VL53L4CD | 3 | ~60mA total / ~0.30W | [TODO: verify peak] | Sensor rail |
-| VL53L8CH | 1 | ~60mA / ~0.30W | ~120mA peak | Sensor rail |
+| VL53L4CD | 3 | ~60mA total / ~0.30W | Not recorded yet | Sensor rail |
+| VL53L8CX | 1 | ~60mA / ~0.30W | ~120mA peak | Sensor rail |
 | I²C expansion board | 1 | ~10-20mA / ~0.08W | Low | Wiring/interface board |
-| CP2102 | 1 | ~20mA / ~0.07W | [TODO: verify peak] | Jetson USB subtree |
+| CP2102 | 1 | ~20mA / ~0.07W | Not recorded yet | Jetson USB subtree |
 
 ---
 
@@ -702,7 +702,7 @@ These values are traced estimates based on the current ARBIBOT power architectur
 | Jetson Orin Nano | Needed for real-time camera processing and YOLO inference |
 | STM32F411 | Reliable low-level control, I2C, PWM, encoder interrupts |
 | VL53 ToF sensors | More precise than ultrasonic sensors for compact WRO geometry |
-| VL53L8CH front matrix | Provides multi-zone front distance information |
+| VL53L8CX front matrix | Provides multi-zone front distance information |
 | JGY-370B worm gear motor | Good torque, manageable speed, encoder feedback |
 | MG996R servo | Enough torque for steering linkage |
 | Cytron MD10C | Robust motor driver for DC gear motor |
@@ -760,7 +760,7 @@ Complete measured values can be added after multimeter/current testing. The curr
 | MG996R servo | 1 | UPS 5V | 0.5-0.9A run, 2.5A stall | PWM via Pololu | Verified estimate |
 | Pololu servo controller | 1 | 5V | Low controller current, servo load separate | USB serial / TTL serial | Verified architecture |
 | VL53L4CD | 3 | 5V module rail through I²C board | ~60mA total / ~0.30W | I2C + XSHUT | Verified estimate |
-| VL53L8CH | 1 | 5V module rail through I²C board | ~60mA typical, ~120mA peak | I2C | Verified estimate |
+| VL53L8CX | 1 | 5V module rail through I²C board | ~60mA typical, ~120mA peak | I2C | Verified estimate |
 | CP2102 | 1 | Jetson USB | ~20mA / ~0.07W | USB-UART | Verified estimate |
 | Waveshare UPS | 1 | 3S 18650, 11.1V / 12.6V | 5V rail rated 5A / 25W | Power + optional I2C | Verified architecture |
 | Logic/steering UPS battery pack | 1 | 3S, 11.1V nominal / 12.6V full | 1200mAh / ~13.3Wh | Power | Verified architecture |
@@ -793,10 +793,10 @@ Related documents:
 
 | Date | Change | Notes |
 |---|---|---|
-| [TODO] | Initial BOM created | Based on current ARBIBOT hardware |
-| [TODO] | Add measured currents | Needed after multimeter/current testing |
-| [TODO] | Add final vendor links or part numbers | Optional but useful for reproducibility |
-| [TODO] | Verify final voltage rails | Needed before final submission |
+| Not recorded yet | Initial BOM created | Based on current ARBIBOT hardware |
+| Not recorded yet | Add measured currents | Needed after multimeter/current testing |
+| Not recorded yet | Add final vendor links or part numbers | Optional but useful for reproducibility |
+| Not recorded yet | Verify final voltage rails | Needed before final submission |
 
 ---
 

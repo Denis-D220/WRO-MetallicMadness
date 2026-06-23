@@ -81,29 +81,29 @@ Keep the final calibration values here.
 
 | Parameter | Current value | Final value | Notes |
 |---|---:|---:|---|
-| Camera resolution | 1280x720 | [TODO] | Jetson GStreamer/OpenCV capture |
-| Camera FPS | [TODO] | [TODO] | Measure during YOLO active run |
-| Camera exposure | Auto / [TODO] | [TODO] | Lock if needed |
-| Pillar YOLO confidence | 0.30 | [TODO] | Current working development value |
-| Corner line confidence | 0.48 | [TODO] | Current working development value |
-| Front matrix trigger distance | ~100 cm | [TODO] | Confirm with final speed |
-| Front matrix valid-cell requirement | >= 2 cells | [TODO] | Used to reduce false triggers |
-| Left VL53L4CD offset | [TODO] | [TODO] | mm correction if needed |
-| Right-front VL53L4CD offset | [TODO] | [TODO] | mm correction if needed |
-| Right-rear VL53L4CD offset | [TODO] | [TODO] | mm correction if needed |
-| Target right wall distance | [TODO] | [TODO] | Used by lane controller |
-| Servo center | [TODO] | [TODO] | Neutral straight wheels |
-| Servo max left | [TODO] | [TODO] | Avoid mechanical binding |
-| Servo max right | [TODO] | [TODO] | Avoid mechanical binding |
-| Normal motor speed | [TODO] | [TODO] | Open Challenge straight speed |
-| Corner motor speed | [TODO] | [TODO] | Slower corner approach if needed |
-| Obstacle motor speed | [TODO] | [TODO] | Safer speed near pillars |
-| Motor PWM min moving | [TODO] | [TODO] | Lowest command that moves reliably |
-| Motor PWM max safe | [TODO] | [TODO] | Maximum stable competition speed |
-| Encoder ticks per wheel revolution | [TODO] | [TODO] | Depends on motor and gearbox |
-| Wheel diameter | [TODO] | [TODO] | Needed for distance calculation |
-| Battery voltage start | [TODO] | [TODO] | Before run |
-| Battery voltage end | [TODO] | [TODO] | After 3-minute run |
+| Camera resolution | 1280x720 | 1280x720 | Jetson GStreamer/OpenCV capture |
+| Camera FPS | Approximately 60 FPS pipeline observation | Approximately 60 FPS | YOLO11n runtime observation on Jetson |
+| Camera exposure | Auto | Auto / tune if field lighting requires it | Lock only if lighting instability appears |
+| Pillar YOLO confidence | 0.30 | 0.30 | Current working value |
+| Corner line confidence | 0.48 | 0.48 | Current working value |
+| Front matrix trigger distance | ~100 cm | ~100 cm | Current working trigger distance |
+| Front matrix valid-cell requirement | >= 2 cells | >= 2 cells | Used to reduce false triggers |
+| Left VL53L4CD offset | Not recorded yet | Not recorded yet | mm correction if needed |
+| Right-front VL53L4CD offset | Not recorded yet | Not recorded yet | mm correction if needed |
+| Right-rear VL53L4CD offset | Not recorded yet | Not recorded yet | mm correction if needed |
+| Target right wall distance | Not recorded yet | Not recorded yet | Used by lane controller |
+| Servo center | Not recorded yet | Not recorded yet | Neutral straight wheels |
+| Servo max left | Not recorded yet | Not recorded yet | Avoid mechanical binding |
+| Servo max right | Not recorded yet | Not recorded yet | Avoid mechanical binding |
+| Normal motor speed | Not recorded yet | Not recorded yet | Open Challenge straight speed |
+| Corner motor speed | Not recorded yet | Not recorded yet | Slower corner approach if needed |
+| Obstacle motor speed | Not recorded yet | Not recorded yet | Safer speed near pillars |
+| Motor PWM min moving | Not recorded yet | Not recorded yet | Lowest command that moves reliably |
+| Motor PWM max safe | Not recorded yet | Not recorded yet | Maximum stable competition speed |
+| Encoder ticks per wheel revolution | Not recorded yet | Not recorded yet | Depends on motor and gearbox |
+| Wheel diameter | Not recorded yet | Not recorded yet | Needed for distance calculation |
+| Battery voltage start | Not recorded yet | Not recorded yet | Before run |
+| Battery voltage end | Not recorded yet | Not recorded yet | After 3-minute run |
 
 ---
 
@@ -156,15 +156,15 @@ Software calibration should not begin until the mechanical system is stable.
 
 | Check | Expected result | Status |
 |---|---|---|
-| Front wheels straight at servo center | Wheels point forward | [TODO] |
-| Steering left | No tire rubbing | [TODO] |
-| Steering right | No tire rubbing | [TODO] |
-| Front bumper clearance | Bumper does not touch tire | [TODO] |
-| Sensor mount angle | Sensor faces intended direction | [TODO] |
-| Camera mount | Camera fixed, no vibration | [TODO] |
-| Rear wheels | Wheels fixed and not slipping on shaft | [TODO] |
-| Wires | No cable touches wheels or steering | [TODO] |
-| Chassis | No loose part | [TODO] |
+| Front wheels straight at servo center | Wheels point forward | Not recorded yet |
+| Steering left | No tire rubbing | Not recorded yet |
+| Steering right | No tire rubbing | Not recorded yet |
+| Front bumper clearance | Bumper does not touch tire | Not recorded yet |
+| Sensor mount angle | Sensor faces intended direction | Not recorded yet |
+| Camera mount | Camera fixed, no vibration | Not recorded yet |
+| Rear wheels | Wheels fixed and not slipping on shaft | Not recorded yet |
+| Wires | No cable touches wheels or steering | Not recorded yet |
+| Chassis | No loose part | Not recorded yet |
 
 ### 7.2 Mechanical Calibration Notes
 
@@ -172,10 +172,10 @@ Record changes here:
 
 | Date | Mechanical change | Calibration affected |
 |---|---|---|
-| [TODO] | Front bumper changed | ToF thresholds, sensor calibration |
-| [TODO] | Steering linkage adjusted | Servo center, steering limits |
-| [TODO] | Camera angle changed | YOLO zones, confidence, line/corner model |
-| [TODO] | Wheel type changed | Motor speed, lane tuning, encoder distance |
+| Not recorded yet | Front bumper changed | ToF thresholds, sensor calibration |
+| Not recorded yet | Steering linkage adjusted | Servo center, steering limits |
+| Not recorded yet | Camera angle changed | YOLO zones, confidence, line/corner model |
+| Not recorded yet | Wheel type changed | Motor speed, lane tuning, encoder distance |
 
 ---
 
@@ -209,15 +209,15 @@ SERVO_CENTER
 
 | Test | Servo value | Observed behavior | Decision |
 |---|---:|---|---|
-| SC-01 | [TODO] | Wheels slightly left | Increase/decrease value |
-| SC-02 | [TODO] | Wheels slightly right | Increase/decrease value |
-| SC-03 | [TODO] | Wheels straight | Candidate center |
-| SC-04 | [TODO] | Robot rolls straight | Final center |
+| SC-01 | Not recorded yet | Wheels slightly left | Increase/decrease value |
+| SC-02 | Not recorded yet | Wheels slightly right | Increase/decrease value |
+| SC-03 | Not recorded yet | Wheels straight | Candidate center |
+| SC-04 | Not recorded yet | Robot rolls straight | Final center |
 
 ### 8.4 Final Value
 
 ```text
-SERVO_CENTER = [TODO]
+SERVO_CENTER = Not recorded yet
 ```
 
 ### 8.5 Notes
@@ -256,16 +256,16 @@ SERVO_RIGHT_LIMIT
 
 | Test | Direction | Servo value | Result | Safe? |
 |---|---|---:|---|---|
-| SL-01 | Left | [TODO] | No binding | Yes/No |
-| SL-02 | Left | [TODO] | Tire close to bumper | Yes/No |
-| SL-03 | Right | [TODO] | No binding | Yes/No |
-| SL-04 | Right | [TODO] | Tire close to bumper | Yes/No |
+| SL-01 | Left | Not recorded yet | No binding | Yes/No |
+| SL-02 | Left | Not recorded yet | Tire close to bumper | Yes/No |
+| SL-03 | Right | Not recorded yet | No binding | Yes/No |
+| SL-04 | Right | Not recorded yet | Tire close to bumper | Yes/No |
 
 ### 9.4 Final Values
 
 ```text
-SERVO_LEFT_LIMIT  = [TODO]
-SERVO_RIGHT_LIMIT = [TODO]
+SERVO_LEFT_LIMIT  = Not recorded yet
+SERVO_RIGHT_LIMIT = Not recorded yet
 ```
 
 ### 9.5 Steering Clamp
@@ -288,18 +288,18 @@ After center and limits are known, verify how steering responds during motion.
 
 | Test | Speed | Steering command | Expected behavior | Result |
 |---|---:|---:|---|---|
-| SR-01 | [TODO] | Center | Robot drives straight | [TODO] |
-| SR-02 | [TODO] | Small left | Smooth left curve | [TODO] |
-| SR-03 | [TODO] | Small right | Smooth right curve | [TODO] |
-| SR-04 | [TODO] | Medium left | Controlled turn | [TODO] |
-| SR-05 | [TODO] | Medium right | Controlled turn | [TODO] |
+| SR-01 | Not recorded yet | Center | Robot drives straight | Not recorded yet |
+| SR-02 | Not recorded yet | Small left | Smooth left curve | Not recorded yet |
+| SR-03 | Not recorded yet | Small right | Smooth right curve | Not recorded yet |
+| SR-04 | Not recorded yet | Medium left | Controlled turn | Not recorded yet |
+| SR-05 | Not recorded yet | Medium right | Controlled turn | Not recorded yet |
 
 ### 10.2 Steering Deadband
 
 If small steering changes do not move the robot enough, define a steering deadband.
 
 ```text
-SERVO_DEADBAND = [TODO]
+SERVO_DEADBAND = Not recorded yet
 ```
 
 This prevents the controller from producing tiny corrections that do not affect the wheels.
@@ -338,15 +338,15 @@ The motor direction must match the software command names.
 
 | Test | Command | Expected result | Observed result | Pass? |
 |---|---|---|---|---|
-| MD-01 | FORWARD | Wheels move robot forward | [TODO] | [TODO] |
-| MD-02 | STOP | Motor stops | [TODO] | [TODO] |
-| MD-03 | REVERSE | Wheels move robot backward | [TODO] | [TODO] |
-| MD-04 | STOP | Motor stops | [TODO] | [TODO] |
+| MD-01 | FORWARD | Wheels move robot forward | Not recorded yet | Not recorded yet |
+| MD-02 | STOP | Motor stops | Not recorded yet | Not recorded yet |
+| MD-03 | REVERSE | Wheels move robot backward | Not recorded yet | Not recorded yet |
+| MD-04 | STOP | Motor stops | Not recorded yet | Not recorded yet |
 
 ### 11.4 Final Direction Status
 
 ```text
-MOTOR_FORWARD_IS_CORRECT = [TODO]
+MOTOR_FORWARD_IS_CORRECT = Not recorded yet
 ```
 
 If forward and reverse are inverted, fix the firmware or wiring before continuing.
@@ -386,15 +386,15 @@ The minimum moving speed is the lowest command that moves the robot reliably on 
 
 | Test | Speed command | Battery voltage | Movement result |
 |---|---:|---:|---|
-| MS-01 | 20% | [TODO] | [TODO] |
-| MS-02 | 30% | [TODO] | [TODO] |
-| MS-03 | 40% | [TODO] | [TODO] |
-| MS-04 | 50% | [TODO] | [TODO] |
+| MS-01 | 20% | Not recorded yet | Not recorded yet |
+| MS-02 | 30% | Not recorded yet | Not recorded yet |
+| MS-03 | 40% | Not recorded yet | Not recorded yet |
+| MS-04 | 50% | Not recorded yet | Not recorded yet |
 
 Final value:
 
 ```text
-MOTOR_SPEED_MIN_MOVING = [TODO]
+MOTOR_SPEED_MIN_MOVING = Not recorded yet
 ```
 
 ### 12.3 Open Challenge Straight Speed
@@ -403,14 +403,14 @@ The Open Challenge speed should be fast enough to complete laps but slow enough 
 
 | Test | Speed | Laps completed | Time | Failure / result |
 |---|---:|---:|---:|---|
-| OS-01 | [TODO] | [TODO] | [TODO] | [TODO] |
-| OS-02 | [TODO] | [TODO] | [TODO] | [TODO] |
-| OS-03 | [TODO] | [TODO] | [TODO] | [TODO] |
+| OS-01 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| OS-02 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| OS-03 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 Final value:
 
 ```text
-MOTOR_SPEED_OPEN_STRAIGHT = [TODO]
+MOTOR_SPEED_OPEN_STRAIGHT = Not recorded yet
 ```
 
 ### 12.4 Corner Speed
@@ -419,14 +419,14 @@ If the robot turns too late or oversteers at corners, reduce speed before corner
 
 | Test | Speed | Corner trigger distance | Turn result |
 |---|---:|---:|---|
-| CS-01 | [TODO] | [TODO] | [TODO] |
-| CS-02 | [TODO] | [TODO] | [TODO] |
-| CS-03 | [TODO] | [TODO] | [TODO] |
+| CS-01 | Not recorded yet | Not recorded yet | Not recorded yet |
+| CS-02 | Not recorded yet | Not recorded yet | Not recorded yet |
+| CS-03 | Not recorded yet | Not recorded yet | Not recorded yet |
 
 Final value:
 
 ```text
-MOTOR_SPEED_CORNER = [TODO]
+MOTOR_SPEED_CORNER = Not recorded yet
 ```
 
 ### 12.5 Obstacle Speed
@@ -435,14 +435,14 @@ Obstacle speed must allow enough time for YOLO detection and steering response.
 
 | Test | Speed | Red pillar result | Green pillar result | Notes |
 |---|---:|---|---|---|
-| OBMS-01 | [TODO] | [TODO] | [TODO] | [TODO] |
-| OBMS-02 | [TODO] | [TODO] | [TODO] | [TODO] |
-| OBMS-03 | [TODO] | [TODO] | [TODO] | [TODO] |
+| OBMS-01 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| OBMS-02 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| OBMS-03 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 Final value:
 
 ```text
-MOTOR_SPEED_OBSTACLE = [TODO]
+MOTOR_SPEED_OBSTACLE = Not recorded yet
 ```
 
 ### 12.6 Motor Speed Rule
@@ -464,11 +464,11 @@ The motor encoder is used to measure rotation and support degree-based movement.
 | Parameter | Value |
 |---|---:|
 | Encoder pulses per motor revolution | 11 PPR base |
-| Gearbox reduction ratio | [TODO] |
-| Effective pulses per output revolution | [TODO] |
-| Wheel diameter | [TODO] |
-| Wheel circumference | [TODO] |
-| Encoder ticks per centimeter | [TODO] |
+| Gearbox reduction ratio | Not recorded yet |
+| Effective pulses per output revolution | Not recorded yet |
+| Wheel diameter | Not recorded yet |
+| Wheel circumference | Not recorded yet |
+| Encoder ticks per centimeter | Not recorded yet |
 
 ### 13.2 Wheel Circumference
 
@@ -493,15 +493,15 @@ wheel_circumference = pi * wheel_diameter
 
 | Test | Direction | Wheel rotations | Encoder ticks | Ticks per rotation |
 |---|---|---:|---:|---:|
-| ENC-01 | Forward | 1 | [TODO] | [TODO] |
-| ENC-02 | Forward | 1 | [TODO] | [TODO] |
-| ENC-03 | Reverse | 1 | [TODO] | [TODO] |
-| ENC-04 | Reverse | 1 | [TODO] | [TODO] |
+| ENC-01 | Forward | 1 | Not recorded yet | Not recorded yet |
+| ENC-02 | Forward | 1 | Not recorded yet | Not recorded yet |
+| ENC-03 | Reverse | 1 | Not recorded yet | Not recorded yet |
+| ENC-04 | Reverse | 1 | Not recorded yet | Not recorded yet |
 
 Final value:
 
 ```text
-ENCODER_TICKS_PER_WHEEL_REV = [TODO]
+ENCODER_TICKS_PER_WHEEL_REV = Not recorded yet
 ```
 
 ---
@@ -522,23 +522,23 @@ ARBIBOT uses multiple VL53 sensors. Since VL53 sensors can share default I2C add
 
 | Sensor | Address | Notes |
 |---|---:|---|
-| Left VL53L4CD | `0x52` | Verify final firmware |
-| Right-front VL53L4CD | `0x54` | Verify final firmware |
-| Right-rear VL53L4CD | `0x56` | Verify final firmware |
-| Front VL53L8CH | `0x52` | Check for possible conflict / final map |
+| Left VL53L4CD | `0x52` | I2C2 / hi2c2, XSHUT PA5 |
+| Right-front VL53L4CD | `0x54` | I2C2 / hi2c2, XSHUT PA7 |
+| Right-rear VL53L4CD | `0x56` | I2C2 / hi2c2, XSHUT PB14 |
+| Front VL53L8CX | `0x52` 8-bit / `0x29` 7-bit | I2C1 / hi2c1; sole device on bus, no conflict |
 
-> Important: Confirm the final address map in STM32 firmware. The front matrix sensor and one VL53L4CD may share the same default address during startup, so initialization order must be correct.
+> Address map confirmed: front matrix is isolated on I2C1 at the default address, while the side VL53L4CD sensors are on I2C2 and initialized with XSHUT sequencing.
 
 ### 14.3 Startup Check
 
 | Test | Expected result | Status |
 |---|---|---|
-| STM32 boots without HardFault | No firmware crash | [TODO] |
-| Left sensor alive | Valid distance | [TODO] |
-| Right-front sensor alive | Valid distance | [TODO] |
-| Right-rear sensor alive | Valid distance | [TODO] |
-| Front matrix alive | Valid matrix | [TODO] |
-| Reboot repeats successfully | Same result after reset | [TODO] |
+| STM32 boots without HardFault | No firmware crash | Not recorded yet |
+| Left sensor alive | Valid distance | Not recorded yet |
+| Right-front sensor alive | Valid distance | Not recorded yet |
+| Right-rear sensor alive | Valid distance | Not recorded yet |
+| Front matrix alive | Valid matrix | Not recorded yet |
+| Reboot repeats successfully | Same result after reset | Not recorded yet |
 
 ---
 
@@ -575,25 +575,25 @@ error_mm = measured_mm - real_mm
 
 | Real distance | Real mm | Left avg | RF avg | RR avg | Left error | RF error | RR error | Notes |
 |---:|---:|---:|---:|---:|---:|---:|---:|---|
-| 120 cm | 1200 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 110 cm | 1100 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 100 cm | 1000 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 90 cm | 900 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 80 cm | 800 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 70 cm | 700 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 60 cm | 600 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 50 cm | 500 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 40 cm | 400 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 30 cm | 300 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 20 cm | 200 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 10 cm | 100 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |  |
+| 120 cm | 1200 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 110 cm | 1100 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 100 cm | 1000 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 90 cm | 900 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 80 cm | 800 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 70 cm | 700 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 60 cm | 600 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 50 cm | 500 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 40 cm | 400 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 30 cm | 300 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 20 cm | 200 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 10 cm | 100 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
 
 ### 15.4 Final Offsets
 
 ```text
-LEFT_TOF_OFFSET_MM        = [TODO]
-RIGHT_FRONT_TOF_OFFSET_MM = [TODO]
-RIGHT_REAR_TOF_OFFSET_MM  = [TODO]
+LEFT_TOF_OFFSET_MM        = Not recorded yet
+RIGHT_FRONT_TOF_OFFSET_MM = Not recorded yet
+RIGHT_REAR_TOF_OFFSET_MM  = Not recorded yet
 ```
 
 ---
@@ -618,11 +618,11 @@ sudden jump larger than allowed threshold
 
 | Parameter | Current value | Final value | Purpose |
 |---|---:|---:|---|
-| `MIN_VALID_DISTANCE_MM` | [TODO] | [TODO] | Reject too-close/fake values |
-| `MAX_VALID_DISTANCE_MM` | [TODO] | [TODO] | Reject out-of-range values |
-| `MAX_JUMP_MM` | [TODO] | [TODO] | Reject sudden spikes |
-| `INVALID_HOLD_TIME_MS` | [TODO] | [TODO] | Use last valid value briefly |
-| `SIDE_SENSOR_TIMEOUT_MS` | [TODO] | [TODO] | Detect missing sensor update |
+| `MIN_VALID_DISTANCE_MM` | Not recorded yet | Not recorded yet | Reject too-close/fake values |
+| `MAX_VALID_DISTANCE_MM` | Not recorded yet | Not recorded yet | Reject out-of-range values |
+| `MAX_JUMP_MM` | Not recorded yet | Not recorded yet | Reject sudden spikes |
+| `INVALID_HOLD_TIME_MS` | Not recorded yet | Not recorded yet | Use last valid value briefly |
+| `SIDE_SENSOR_TIMEOUT_MS` | Not recorded yet | Not recorded yet | Detect missing sensor update |
 
 ### 16.3 Last Valid Value Strategy
 
@@ -670,14 +670,14 @@ Interpretation:
 
 | Test | Physical RF distance | Physical RR distance | RF reading | RR reading | Heading error |
 |---|---:|---:|---:|---:|---:|
-| RH-01 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
-| RH-02 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
-| RH-03 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
+| RH-01 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| RH-02 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| RH-03 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 Final acceptable heading error when parallel:
 
 ```text
-MAX_PARALLEL_HEADING_ERROR_MM = [TODO]
+MAX_PARALLEL_HEADING_ERROR_MM = Not recorded yet
 ```
 
 ---
@@ -698,22 +698,22 @@ The lane controller needs a target distance from the wall.
 
 | Test | Target distance | Speed | Result |
 |---|---:|---:|---|
-| TD-01 | [TODO] | [TODO] | Too close to wall |
-| TD-02 | [TODO] | [TODO] | Too far from wall |
-| TD-03 | [TODO] | [TODO] | Stable |
-| TD-04 | [TODO] | [TODO] | Final candidate |
+| TD-01 | Not recorded yet | Not recorded yet | Too close to wall |
+| TD-02 | Not recorded yet | Not recorded yet | Too far from wall |
+| TD-03 | Not recorded yet | Not recorded yet | Stable |
+| TD-04 | Not recorded yet | Not recorded yet | Final candidate |
 
 Final value:
 
 ```text
-TARGET_RIGHT_WALL_DISTANCE_MM = [TODO]
+TARGET_RIGHT_WALL_DISTANCE_MM = Not recorded yet
 ```
 
 ---
 
 ## 19. Front Matrix Calibration
 
-The front VL53L8CH matrix helps detect walls, corners, and front obstacles.
+The front VL53L8CX matrix helps detect walls, corners, and front obstacles.
 
 ### 19.1 Goal
 
@@ -754,22 +754,22 @@ floor-band cells are ignored
 
 | Real distance | Valid cells | Selected row values | Trigger? | Notes |
 |---:|---:|---|---|---|
-| 120 cm | [TODO] | [TODO] | No/Yes |  |
-| 110 cm | [TODO] | [TODO] | No/Yes |  |
-| 100 cm | [TODO] | [TODO] | No/Yes |  |
-| 90 cm | [TODO] | [TODO] | No/Yes |  |
-| 80 cm | [TODO] | [TODO] | No/Yes |  |
-| 70 cm | [TODO] | [TODO] | No/Yes |  |
-| 60 cm | [TODO] | [TODO] | No/Yes |  |
+| 120 cm | Not recorded yet | Not recorded yet | No/Yes |  |
+| 110 cm | Not recorded yet | Not recorded yet | No/Yes |  |
+| 100 cm | Not recorded yet | Not recorded yet | No/Yes |  |
+| 90 cm | Not recorded yet | Not recorded yet | No/Yes |  |
+| 80 cm | Not recorded yet | Not recorded yet | No/Yes |  |
+| 70 cm | Not recorded yet | Not recorded yet | No/Yes |  |
+| 60 cm | Not recorded yet | Not recorded yet | No/Yes |  |
 
 ### 19.5 Final Values
 
 ```text
-FRONT_TRIGGER_DISTANCE_MM   = [TODO]
-FRONT_MIN_VALID_MM          = [TODO]
-FRONT_MAX_VALID_MM          = [TODO]
-FRONT_REQUIRED_VALID_CELLS  = [TODO]
-FRONT_MATRIX_ROW_USED       = [TODO]
+FRONT_TRIGGER_DISTANCE_MM   = 1000
+FRONT_MIN_VALID_MM          = Not recorded yet
+FRONT_MAX_VALID_MM          = Not recorded yet
+FRONT_REQUIRED_VALID_CELLS  = 2
+FRONT_MATRIX_ROW_USED       = Not recorded yet
 ```
 
 ---
@@ -803,18 +803,18 @@ The camera should see:
 
 | Test | Camera angle | Pillar visible distance | Field visibility | Result |
 |---|---|---:|---|---|
-| CAM-01 | [TODO] | [TODO] | [TODO] | [TODO] |
-| CAM-02 | [TODO] | [TODO] | [TODO] | [TODO] |
-| CAM-03 | [TODO] | [TODO] | [TODO] | [TODO] |
+| CAM-01 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| CAM-02 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| CAM-03 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 ### 20.4 Final Camera Setup
 
 ```text
-CAMERA_RESOLUTION = [TODO]
-CAMERA_FPS        = [TODO]
-CAMERA_ANGLE      = [TODO]
-CAMERA_EXPOSURE   = [TODO]
-CAMERA_GAIN       = [TODO]
+CAMERA_RESOLUTION = Not recorded yet
+CAMERA_FPS        = Not recorded yet
+CAMERA_ANGLE      = Not recorded yet
+CAMERA_EXPOSURE   = Not recorded yet
+CAMERA_GAIN       = Not recorded yet
 ```
 
 ---
@@ -837,18 +837,18 @@ Camera color correction helps make red/green pillar detection more consistent.
 
 | Test | Brightness | Contrast | Saturation | Notes |
 |---|---:|---:|---:|---|
-| CT-01 | [TODO] | [TODO] | [TODO] | Original |
-| CT-02 | [TODO] | [TODO] | [TODO] | Better red |
-| CT-03 | [TODO] | [TODO] | [TODO] | Better green |
-| CT-04 | [TODO] | [TODO] | [TODO] | Final |
+| CT-01 | Not recorded yet | Not recorded yet | Not recorded yet | Original |
+| CT-02 | Not recorded yet | Not recorded yet | Not recorded yet | Better red |
+| CT-03 | Not recorded yet | Not recorded yet | Not recorded yet | Better green |
+| CT-04 | Not recorded yet | Not recorded yet | Not recorded yet | Final |
 
 ### 21.3 Final Color Values
 
 ```text
-CAMERA_BRIGHTNESS = [TODO]
-CAMERA_CONTRAST   = [TODO]
-CAMERA_SATURATION = [TODO]
-COLOR_PROFILE     = [TODO]
+CAMERA_BRIGHTNESS = Not recorded yet
+CAMERA_CONTRAST   = Not recorded yet
+CAMERA_SATURATION = Not recorded yet
+COLOR_PROFILE     = Not recorded yet
 ```
 
 ---
@@ -889,18 +889,18 @@ Choose confidence thresholds that minimize both:
 
 | Test | Object | Position | Distance | Lighting | Confidence | Accepted? | Correct? |
 |---|---|---|---:|---|---:|---|---|
-| YC-01 | Red pillar | Center | [TODO] | Normal | [TODO] | [TODO] | [TODO] |
-| YC-02 | Red pillar | Left | [TODO] | Normal | [TODO] | [TODO] | [TODO] |
-| YC-03 | Red pillar | Right | [TODO] | Glare | [TODO] | [TODO] | [TODO] |
-| YC-04 | Green pillar | Center | [TODO] | Normal | [TODO] | [TODO] | [TODO] |
-| YC-05 | Green pillar | Left | [TODO] | Normal | [TODO] | [TODO] | [TODO] |
-| YC-06 | Green pillar | Right | [TODO] | Glare | [TODO] | [TODO] | [TODO] |
-| YC-07 | No pillar | N/A | N/A | Normal | [TODO] | [TODO] | [TODO] |
+| YC-01 | Red pillar | Center | Not recorded yet | Normal | Not recorded yet | Not recorded yet | Not recorded yet |
+| YC-02 | Red pillar | Left | Not recorded yet | Normal | Not recorded yet | Not recorded yet | Not recorded yet |
+| YC-03 | Red pillar | Right | Not recorded yet | Glare | Not recorded yet | Not recorded yet | Not recorded yet |
+| YC-04 | Green pillar | Center | Not recorded yet | Normal | Not recorded yet | Not recorded yet | Not recorded yet |
+| YC-05 | Green pillar | Left | Not recorded yet | Normal | Not recorded yet | Not recorded yet | Not recorded yet |
+| YC-06 | Green pillar | Right | Not recorded yet | Glare | Not recorded yet | Not recorded yet | Not recorded yet |
+| YC-07 | No pillar | N/A | N/A | Normal | Not recorded yet | Not recorded yet | Not recorded yet |
 
 Final value:
 
 ```text
-PILLAR_CONFIDENCE_THRESHOLD = [TODO]
+PILLAR_CONFIDENCE_THRESHOLD = Not recorded yet
 ```
 
 ### 22.5 Corner Line Confidence Procedure
@@ -916,15 +916,15 @@ PILLAR_CONFIDENCE_THRESHOLD = [TODO]
 
 | Test | Scene | Lighting | Speed | Confidence | Accepted? | Correct? |
 |---|---|---|---:|---:|---|---|
-| CC-01 | Corner line visible | Normal | 0 | [TODO] | [TODO] | [TODO] |
-| CC-02 | Corner line visible | Normal | [TODO] | [TODO] | [TODO] | [TODO] |
-| CC-03 | No corner | Normal | [TODO] | [TODO] | [TODO] | [TODO] |
-| CC-04 | Corner with glare | Glare | [TODO] | [TODO] | [TODO] | [TODO] |
+| CC-01 | Corner line visible | Normal | 0 | Not recorded yet | Not recorded yet | Not recorded yet |
+| CC-02 | Corner line visible | Normal | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| CC-03 | No corner | Normal | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| CC-04 | Corner with glare | Glare | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 Final value:
 
 ```text
-CORNER_LINE_CONFIDENCE_THRESHOLD = [TODO]
+CORNER_LINE_CONFIDENCE_THRESHOLD = Not recorded yet
 ```
 
 ---
@@ -964,19 +964,19 @@ RIGHT  = x >= 853
 
 | Test | Pillar color | Physical position | Detected zone | Correct? |
 |---|---|---|---|---|
-| ZN-01 | Red | Left | [TODO] | [TODO] |
-| ZN-02 | Red | Center | [TODO] | [TODO] |
-| ZN-03 | Red | Right | [TODO] | [TODO] |
-| ZN-04 | Green | Left | [TODO] | [TODO] |
-| ZN-05 | Green | Center | [TODO] | [TODO] |
-| ZN-06 | Green | Right | [TODO] | [TODO] |
+| ZN-01 | Red | Left | Not recorded yet | Not recorded yet |
+| ZN-02 | Red | Center | Not recorded yet | Not recorded yet |
+| ZN-03 | Red | Right | Not recorded yet | Not recorded yet |
+| ZN-04 | Green | Left | Not recorded yet | Not recorded yet |
+| ZN-05 | Green | Center | Not recorded yet | Not recorded yet |
+| ZN-06 | Green | Right | Not recorded yet | Not recorded yet |
 
 ### 23.4 Final Zone Values
 
 ```text
-FRAME_WIDTH = [TODO]
-ZONE_LEFT_MAX_X = [TODO]
-ZONE_CENTER_MAX_X = [TODO]
+FRAME_WIDTH = Not recorded yet
+ZONE_LEFT_MAX_X = Not recorded yet
+ZONE_CENTER_MAX_X = Not recorded yet
 ```
 
 ---
@@ -996,19 +996,19 @@ Bounding-box area is used as an estimate of closeness. Larger area usually means
 
 | Distance | Red area | Green area | Notes |
 |---:|---:|---:|---|
-| 120 cm | [TODO] | [TODO] |  |
-| 100 cm | [TODO] | [TODO] |  |
-| 80 cm | [TODO] | [TODO] |  |
-| 60 cm | [TODO] | [TODO] |  |
-| 40 cm | [TODO] | [TODO] |  |
-| 30 cm | [TODO] | [TODO] |  |
+| 120 cm | Not recorded yet | Not recorded yet |  |
+| 100 cm | Not recorded yet | Not recorded yet |  |
+| 80 cm | Not recorded yet | Not recorded yet |  |
+| 60 cm | Not recorded yet | Not recorded yet |  |
+| 40 cm | Not recorded yet | Not recorded yet |  |
+| 30 cm | Not recorded yet | Not recorded yet |  |
 
 Final values:
 
 ```text
-PILLAR_REACT_AREA_MIN = [TODO]
-PILLAR_CLOSE_AREA     = [TODO]
-PILLAR_PASSED_AREA    = [TODO]
+PILLAR_REACT_AREA_MIN = Not recorded yet
+PILLAR_CLOSE_AREA     = Not recorded yet
+PILLAR_PASSED_AREA    = Not recorded yet
 ```
 
 ---
@@ -1040,17 +1040,17 @@ steering       = Kd_distance * distance_error + Kh_heading * heading_error
 
 | Test | Speed | Target distance | Distance gain | Heading gain | Result |
 |---|---:|---:|---:|---:|---|
-| LF-01 | [TODO] | [TODO] | [TODO] | [TODO] | Wall-to-wall wandering |
-| LF-02 | [TODO] | [TODO] | [TODO] | [TODO] | Improved |
-| LF-03 | [TODO] | [TODO] | [TODO] | [TODO] | Stable |
-| LF-04 | [TODO] | [TODO] | [TODO] | [TODO] | Final candidate |
+| LF-01 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Wall-to-wall wandering |
+| LF-02 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Improved |
+| LF-03 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Stable |
+| LF-04 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Final candidate |
 
 Final values:
 
 ```text
-LANE_TARGET_RIGHT_MM = [TODO]
-LANE_DISTANCE_GAIN   = [TODO]
-LANE_HEADING_GAIN    = [TODO]
+LANE_TARGET_RIGHT_MM = Not recorded yet
+LANE_DISTANCE_GAIN   = Not recorded yet
+LANE_HEADING_GAIN    = Not recorded yet
 ```
 
 ---
@@ -1083,18 +1083,18 @@ Tune the robot so it passes:
 
 | Test | Pillar | Speed | Kp | Ki | Kd | Clamp | Result |
 |---|---|---:|---:|---:|---:|---:|---|
-| PDI-01 | Red | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
-| PDI-02 | Green | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
-| PDI-03 | Red | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
-| PDI-04 | Green | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
+| PDI-01 | Red | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| PDI-02 | Green | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| PDI-03 | Red | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| PDI-04 | Green | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 Final values:
 
 ```text
-PILLAR_PDI_KP = [TODO]
-PILLAR_PDI_KI = [TODO]
-PILLAR_PDI_KD = [TODO]
-PILLAR_STEERING_CLAMP = [TODO]
+PILLAR_PDI_KP = Not recorded yet
+PILLAR_PDI_KI = Not recorded yet
+PILLAR_PDI_KD = Not recorded yet
+PILLAR_STEERING_CLAMP = Not recorded yet
 ```
 
 ### 26.4 Tuning Rule
@@ -1133,18 +1133,18 @@ Ensure motor commands do not block camera/YOLO execution.
 
 | Test | Motor command mode | Camera FPS | YOLO FPS | Serial timeouts | Notes |
 |---|---|---:|---:|---:|---|
-| ST-01 | No motor command | [TODO] | [TODO] | [TODO] | Baseline |
-| ST-02 | Blocking response wait | [TODO] | [TODO] | [TODO] | [TODO] |
-| ST-03 | Fire-and-forget | [TODO] | [TODO] | [TODO] | [TODO] |
-| ST-04 | Sensor polling active | [TODO] | [TODO] | [TODO] | [TODO] |
+| ST-01 | No motor command | Not recorded yet | Not recorded yet | Not recorded yet | Baseline |
+| ST-02 | Blocking response wait | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| ST-03 | Fire-and-forget | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| ST-04 | Sensor polling active | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 Final values:
 
 ```text
-MOTOR_WAIT_RESPONSE_DEFAULT = [TODO]
-SERIAL_TIMEOUT_MS = [TODO]
-STOP_PULSE_COUNT = [TODO]
-STOP_PULSE_DELAY_MS = [TODO]
+MOTOR_WAIT_RESPONSE_DEFAULT = Not recorded yet
+SERIAL_TIMEOUT_MS = Not recorded yet
+STOP_PULSE_COUNT = Not recorded yet
+STOP_PULSE_DELAY_MS = Not recorded yet
 ```
 
 ---
@@ -1167,15 +1167,15 @@ Motor speed and servo behavior can change when battery voltage drops.
 
 | Test | Motor battery start | Motor battery end | Jetson battery start | Jetson battery end | Result |
 |---|---:|---:|---:|---:|---|
-| BAT-01 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
-| BAT-02 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
-| BAT-03 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
+| BAT-01 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| BAT-02 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| BAT-03 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 Final safe range:
 
 ```text
-MIN_MOTOR_BATTERY_VOLTAGE = [TODO]
-MIN_JETSON_BATTERY_VOLTAGE = [TODO]
+MIN_MOTOR_BATTERY_VOLTAGE = Not recorded yet
+MIN_JETSON_BATTERY_VOLTAGE = Not recorded yet
 ```
 
 ---
@@ -1248,33 +1248,33 @@ Use this checklist before final challenge tuning.
 After final testing, copy the selected values here.
 
 ```text
-SERVO_CENTER = [TODO]
-SERVO_LEFT_LIMIT = [TODO]
-SERVO_RIGHT_LIMIT = [TODO]
+SERVO_CENTER = Not recorded yet
+SERVO_LEFT_LIMIT = Not recorded yet
+SERVO_RIGHT_LIMIT = Not recorded yet
 
-MOTOR_SPEED_MIN_MOVING = [TODO]
-MOTOR_SPEED_OPEN_STRAIGHT = [TODO]
-MOTOR_SPEED_CORNER = [TODO]
-MOTOR_SPEED_OBSTACLE = [TODO]
-MOTOR_SPEED_PARKING = [TODO]
+MOTOR_SPEED_MIN_MOVING = Not recorded yet
+MOTOR_SPEED_OPEN_STRAIGHT = Not recorded yet
+MOTOR_SPEED_CORNER = Not recorded yet
+MOTOR_SPEED_OBSTACLE = Not recorded yet
+MOTOR_SPEED_PARKING = Not recorded yet
 
-PILLAR_CONFIDENCE_THRESHOLD = [TODO]
-CORNER_LINE_CONFIDENCE_THRESHOLD = [TODO]
+PILLAR_CONFIDENCE_THRESHOLD = Not recorded yet
+CORNER_LINE_CONFIDENCE_THRESHOLD = Not recorded yet
 
-TARGET_RIGHT_WALL_DISTANCE_MM = [TODO]
-LANE_DISTANCE_GAIN = [TODO]
-LANE_HEADING_GAIN = [TODO]
+TARGET_RIGHT_WALL_DISTANCE_MM = Not recorded yet
+LANE_DISTANCE_GAIN = Not recorded yet
+LANE_HEADING_GAIN = Not recorded yet
 
-FRONT_TRIGGER_DISTANCE_MM = [TODO]
-FRONT_REQUIRED_VALID_CELLS = [TODO]
+FRONT_TRIGGER_DISTANCE_MM = Not recorded yet
+FRONT_REQUIRED_VALID_CELLS = Not recorded yet
 
-PILLAR_PDI_KP = [TODO]
-PILLAR_PDI_KI = [TODO]
-PILLAR_PDI_KD = [TODO]
-PILLAR_STEERING_CLAMP = [TODO]
+PILLAR_PDI_KP = Not recorded yet
+PILLAR_PDI_KI = Not recorded yet
+PILLAR_PDI_KD = Not recorded yet
+PILLAR_STEERING_CLAMP = Not recorded yet
 
-STOP_PULSE_COUNT = [TODO]
-SERIAL_TIMEOUT_MS = [TODO]
+STOP_PULSE_COUNT = Not recorded yet
+SERIAL_TIMEOUT_MS = Not recorded yet
 ```
 
 ---
@@ -1283,11 +1283,11 @@ SERIAL_TIMEOUT_MS = [TODO]
 
 | Date | Calibration change | Reason | Result |
 |---|---|---|---|
-| [TODO] | Initial calibration procedure created | Documentation | Ready for measured values |
-| [TODO] | Servo center updated | Mechanical alignment | [TODO] |
-| [TODO] | ToF thresholds updated | Sensor testing | [TODO] |
-| [TODO] | YOLO confidence updated | Vision testing | [TODO] |
-| [TODO] | Motor speed updated | Challenge testing | [TODO] |
+| Not recorded yet | Initial calibration procedure created | Documentation | Ready for measured values |
+| Not recorded yet | Servo center updated | Mechanical alignment | Not recorded yet |
+| Not recorded yet | ToF thresholds updated | Sensor testing | Not recorded yet |
+| Not recorded yet | YOLO confidence updated | Vision testing | Not recorded yet |
+| Not recorded yet | Motor speed updated | Challenge testing | Not recorded yet |
 
 ---
 

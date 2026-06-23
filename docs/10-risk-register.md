@@ -263,7 +263,7 @@ VL53 distance sensors may return invalid values, noisy readings, floor reflectio
 ### Subsystem affected
 
 - VL53L4CD side sensors
-- VL53L8CH front matrix sensor
+- VL53L8CX front matrix sensor
 - I2C bus
 - STM32 firmware
 - Jetson sensor parser
@@ -928,7 +928,7 @@ Multiple VL53 sensors can have the same default address. If they start with conf
 ### Subsystem affected
 
 - VL53L4CD sensors
-- VL53L8CH front sensor
+- VL53L8CX front sensor
 - I2C bus
 - XSHUT control
 - STM32 firmware
@@ -977,7 +977,7 @@ Medium to high.
 
 ### Status
 
-Medium. Final address map should be verified and documented.
+Medium. Final address map is documented: front VL53L8CX on I2C1 at 0x52 8-bit / 0x29 7-bit; side VL53L4CD sensors on I2C2 at 0x52, 0x54, and 0x56 using XSHUT pins PA5, PA7, and PB14.
 
 ---
 
@@ -989,7 +989,7 @@ The front matrix may falsely detect a wall/corner too early because one cell see
 
 ### Subsystem affected
 
-- VL53L8CH matrix
+- VL53L8CX matrix
 - corner detection
 - Open Challenge logic
 - obstacle challenge corner handling
@@ -1532,7 +1532,7 @@ The robot may work, but documentation may lack enough test evidence to prove per
 
 ### Symptoms
 
-- docs contain too many `[TODO]` values,
+- docs contain too many `Not recorded yet` values,
 - impossible to compare versions,
 - final behavior is not reproducible,
 - judges cannot verify engineering process.
@@ -1551,7 +1551,7 @@ Medium.
 
 ### Detection method
 
-- Review docs for `[TODO]`.
+- Review docs for `Not recorded yet`.
 - Check whether each major claim has evidence.
 - Ensure videos and photos are linked.
 
@@ -1695,7 +1695,7 @@ When sensors are moved or bumper geometry changes, previous calibration values m
 ### Subsystem affected
 
 - VL53L4CD sensors
-- VL53L8CH front sensor
+- VL53L8CX front sensor
 - wall-following controller
 - corner trigger
 - obstacle distance logic
@@ -1772,7 +1772,7 @@ Use this checklist before running the robot on the field.
 ### Sensors
 
 - [ ] VL53L4CD sensors return valid values.
-- [ ] VL53L8CH front matrix returns valid matrix.
+- [ ] VL53L8CX front matrix returns valid matrix.
 - [ ] No side sensor stuck at `-1`.
 - [ ] I2C sensors initialize successfully.
 - [ ] Sensor readings match approximate real distances.
@@ -1890,9 +1890,9 @@ The following evidence is needed to close or reduce the highest risks:
 
 | Date | Change | Notes |
 |---|---|---|
-| [TODO] | Initial risk register created | Includes glare, sensor noise, UART timeout, motor blocking, weak battery, and bad pillar detection |
-| [TODO] | Add final test evidence | Fill after more field testing |
-| [TODO] | Update probability/impact after competition-like tests | Replace estimated scores with measured experience |
+| Not recorded yet | Initial risk register created | Includes glare, sensor noise, UART timeout, motor blocking, weak battery, and bad pillar detection |
+| Not recorded yet | Add final test evidence | Fill after more field testing |
+| Not recorded yet | Update probability/impact after competition-like tests | Replace estimated scores with measured experience |
 
 ---
 

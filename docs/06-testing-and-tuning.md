@@ -39,7 +39,7 @@ ARBIBOT testing is divided into the following categories:
 | Mechanical tests | Check steering range, wheel traction, bumper clearance, drivetrain reliability |
 | Power tests | Check runtime, voltage stability, current draw, brownout risk |
 | Motor tests | Validate continuous movement, stop, speed, encoder, move-by-degrees |
-| Sensor tests | Validate VL53L4CD, VL53L8CH, IMU, sensor addresses, calibration |
+| Sensor tests | Validate VL53L4CD, VL53L8CX, IMU, sensor addresses, calibration |
 | Vision tests | Validate YOLO detection, FPS, confidence thresholds, lighting behavior |
 | Open Challenge tests | Validate lane following, corner detection, lap completion |
 | Obstacle Challenge tests | Validate red/green pillar detection and pass-side behavior |
@@ -54,19 +54,19 @@ The following metrics should be used to evaluate progress.
 
 | Metric | Description | Target / Notes |
 |---|---|---|
-| Best lap time | Fastest completed lap | [TODO] |
-| Average lap time | Average of clean completed laps | [TODO] |
-| Open Challenge success rate | Percentage of Open Challenge runs completing required behavior | [TODO] |
-| Obstacle Challenge success rate | Percentage of Obstacle Challenge runs obeying red/green signs | [TODO] |
-| Parking success rate | Percentage of parking attempts ending correctly | [TODO] |
+| Best lap time | Fastest completed lap | 1:05 / 65 seconds |
+| Average lap time | Average of clean completed laps | 1:10 / 70 seconds |
+| Open Challenge success rate | Percentage of Open Challenge runs completing required behavior | 80% |
+| Obstacle Challenge success rate | Percentage of Obstacle Challenge runs obeying red/green signs | 50% |
+| Parking success rate | Percentage of parking attempts ending correctly | N/A |
 | Corner detection distance | Distance at which corner turn is triggered | Current target around ~100 cm |
-| Wall-following error | Difference from target wall distance | [TODO] |
-| Heading error | Difference between right-front and right-rear sensor values | [TODO] |
-| YOLO inference time | Time per frame for detection | [TODO] |
-| YOLO FPS | Inference frames per second on Jetson | [TODO] |
-| Serial command latency | Time for command/response or fire-and-forget execution | [TODO] |
-| Stop reliability | Percentage of stop commands executed correctly | [TODO] |
-| Battery runtime | Operating time under competition load | Estimated 20-30 min; measure final |
+| Wall-following error | Difference from target wall distance | Not recorded yet |
+| Heading error | Difference between right-front and right-rear sensor values | Not recorded yet |
+| YOLO inference time | Time per frame for detection | Not recorded yet |
+| YOLO FPS | Inference frames per second on Jetson | Not recorded yet |
+| Serial command latency | Time for command/response or fire-and-forget execution | Not recorded yet |
+| Stop reliability | Percentage of stop commands executed correctly | Not recorded yet |
+| Battery runtime | Operating time under competition load | UPS approx. 24 min; motor battery approx. 2 hr motor-time estimate |
 
 ---
 
@@ -93,10 +93,10 @@ Use this table for every meaningful test run. A run does not need to be successf
 
 | Run ID | Date | Challenge | Software version | Battery voltage start/end | Speed setting | Result | Laps completed | Time | Main failure / note |
 |---|---|---|---|---|---:|---|---:|---:|---|
-| RUN-001 | [TODO] | Open | v1 | [TODO] | [TODO] | Failed | [TODO] | [TODO] | [TODO] |
-| RUN-002 | [TODO] | Open | v2 | [TODO] | [TODO] | Partial | [TODO] | [TODO] | [TODO] |
-| RUN-003 | [TODO] | Open | v4 | [TODO] | [TODO] | Partial | 2.5 | [TODO] | Lane-keeping failure |
-| RUN-004 | [TODO] | Obstacle | main_challenge_02 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
+| RUN-001 | Not recorded yet | Open | v1 | Not recorded yet | Not recorded yet | Failed | Not recorded yet | Not recorded yet | Not recorded yet |
+| RUN-002 | Not recorded yet | Open | v2 | Not recorded yet | Not recorded yet | Partial | Not recorded yet | Not recorded yet | Not recorded yet |
+| RUN-003 | Not recorded yet | Open | v4 | Not recorded yet | Not recorded yet | Partial | 2.5 | Not recorded yet | Lane-keeping failure |
+| RUN-004 | Not recorded yet | Obstacle | main_challenge_02 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 Recommended result labels:
 
@@ -134,14 +134,14 @@ Mechanical testing focuses on whether the physical robot can execute the command
 
 | Test | Method | Expected result | Status |
 |---|---|---|---|
-| Steering center | Set servo to neutral | Wheels point straight | [TODO] |
-| Maximum left steering | Command full left | No mechanical binding | [TODO] |
-| Maximum right steering | Command full right | No mechanical binding | [TODO] |
+| Steering center | Set servo to neutral | Wheels point straight | Not recorded yet |
+| Maximum left steering | Command full left | No mechanical binding | Not recorded yet |
+| Maximum right steering | Command full right | No mechanical binding | Not recorded yet |
 | Bumper clearance | Turn wheels fully both directions | Tires do not rub bumper | Improved after redesign |
 | Wheel traction | Drive on WRO mat | No slipping under normal acceleration | Improved after replacing thinner wheels |
 | Drive axle torque transfer | Start/stop repeatedly | Rear wheels receive torque reliably | Improved after drivetrain change |
-| Chassis rigidity | Push/twist gently by hand | No major flex at mounts | [TODO] |
-| Sensor mount stability | Drive over test laps | Sensor angles do not change | [TODO] |
+| Chassis rigidity | Push/twist gently by hand | No major flex at mounts | Not recorded yet |
+| Sensor mount stability | Drive over test laps | Sensor angles do not change | Not recorded yet |
 
 ### 7.2 Mechanical Failure Data
 
@@ -179,13 +179,13 @@ Recommended test sequence:
 
 | Test ID | Command | Expected result | Observed result | Status |
 |---|---|---|---|---|
-| MOT-01 | `0x0104 SET SPEED` | PWM speed updates | [TODO] | [TODO] |
-| MOT-02 | `0x0004 FORWARD` | Motor moves forward continuously | [TODO] | [TODO] |
-| MOT-03 | `0x0005 REVERSE` | Motor moves reverse continuously | [TODO] | [TODO] |
-| MOT-04 | `0x0103 STOP` | Motor stops immediately | [TODO] | [TODO] |
-| MOT-05 | `0x0101 FORWARD DEGREE` | Motor moves requested degrees | [TODO] | [TODO] |
-| MOT-06 | `0x0102 REVERSE DEGREE` | Motor reverses requested degrees | [TODO] | [TODO] |
-| MOT-07 | Encoder RPM read | RPM changes with motor speed | [TODO] | [TODO] |
+| MOT-01 | `0x0104 SET SPEED` | PWM speed updates | Not recorded yet | Not recorded yet |
+| MOT-02 | `0x0004 FORWARD` | Motor moves forward continuously | Not recorded yet | Not recorded yet |
+| MOT-03 | `0x0005 REVERSE` | Motor moves reverse continuously | Not recorded yet | Not recorded yet |
+| MOT-04 | `0x0103 STOP` | Motor stops immediately | Not recorded yet | Not recorded yet |
+| MOT-05 | `0x0101 FORWARD DEGREE` | Motor moves requested degrees | Not recorded yet | Not recorded yet |
+| MOT-06 | `0x0102 REVERSE DEGREE` | Motor reverses requested degrees | Not recorded yet | Not recorded yet |
+| MOT-07 | Encoder RPM read | RPM changes with motor speed | Not recorded yet | Not recorded yet |
 
 ### 8.3 Motor Issues Found
 
@@ -215,20 +215,20 @@ For each distance, the robot is moved to the reference location and the Python s
 
 ### 9.2 Calibration Data Table
 
-| Real distance | Left VL53L4CD | Right-front VL53L4CD | Right-rear VL53L4CD | Front VL53L8CH | Error / notes |
+| Real distance | Left VL53L4CD | Right-front VL53L4CD | Right-rear VL53L4CD | Front VL53L8CX | Error / notes |
 |---:|---:|---:|---:|---:|---|
-| 120 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 110 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 100 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 90 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 80 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 70 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 60 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 50 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 40 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 30 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 20 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
-| 10 cm | [TODO] | [TODO] | [TODO] | [TODO] |  |
+| 120 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 110 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 100 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 90 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 80 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 70 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 60 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 50 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 40 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 30 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 20 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
+| 10 cm | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |  |
 
 ### 9.3 Sensor Issues Found
 
@@ -244,7 +244,7 @@ For each distance, the robot is moved to the reference location and the Python s
 
 ## 10. Front Matrix Corner Trigger Testing
 
-The front VL53L8CH matrix is used to support corner detection.
+The front VL53L8CX matrix is used to support corner detection.
 
 ### 10.1 Original Problem
 
@@ -271,9 +271,9 @@ The improved logic:
 
 | Test ID | Approach speed | Trigger distance | Cells valid | Result | Notes |
 |---|---:|---:|---:|---|---|
-| FMT-01 | [TODO] | ~100 cm | [TODO] | Success | [TODO] |
-| FMT-02 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
-| FMT-03 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
+| FMT-01 | Not recorded yet | ~100 cm | Not recorded yet | Success | Not recorded yet |
+| FMT-02 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| FMT-03 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 ---
 
@@ -308,20 +308,20 @@ steering = Kd * distance_error + Kh * heading_error
 
 | Parameter | Value | Effect |
 |---|---:|---|
-| Target right distance | [TODO] | Desired distance from right wall |
-| Distance gain | [TODO] | Corrects lateral offset |
-| Heading gain | [TODO] | Corrects angle relative to wall |
-| Steering center | [TODO] | Servo neutral |
-| Steering clamp | [TODO] | Maximum correction |
-| Straight speed | [TODO] | Motor speed during straight sections |
+| Target right distance | Not recorded yet | Desired distance from right wall |
+| Distance gain | Not recorded yet | Corrects lateral offset |
+| Heading gain | Not recorded yet | Corrects angle relative to wall |
+| Steering center | Not recorded yet | Servo neutral |
+| Steering clamp | Not recorded yet | Maximum correction |
+| Straight speed | Not recorded yet | Motor speed during straight sections |
 
 ### 11.5 Lane Test Results
 
 | Test ID | Target distance | Speed | Result | Notes |
 |---|---:|---:|---|---|
-| LANE-01 | [TODO] | [TODO] | Wandering | Distance-only PID |
-| LANE-02 | [TODO] | [TODO] | Improved | Added RF-RR heading |
-| LANE-03 | [TODO] | [TODO] | [TODO] | [TODO] |
+| LANE-01 | Not recorded yet | Not recorded yet | Wandering | Distance-only PID |
+| LANE-02 | Not recorded yet | Not recorded yet | Improved | Added RF-RR heading |
+| LANE-03 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 ---
 
@@ -333,11 +333,11 @@ Vision testing checks whether the Jetson can detect pillars and track lines with
 
 | Test ID | Object | Lighting | Distance | Confidence | Result |
 |---|---|---|---:|---:|---|
-| VIS-01 | Red pillar | [TODO] | [TODO] | [TODO] | [TODO] |
-| VIS-02 | Green pillar | [TODO] | [TODO] | [TODO] | [TODO] |
-| VIS-03 | Multiple pillars | [TODO] | [TODO] | [TODO] | [TODO] |
-| VIS-04 | Partial occlusion | [TODO] | [TODO] | [TODO] | [TODO] |
-| VIS-05 | Motion blur | [TODO] | [TODO] | [TODO] | [TODO] |
+| VIS-01 | Red pillar | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| VIS-02 | Green pillar | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| VIS-03 | Multiple pillars | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| VIS-04 | Partial occlusion | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| VIS-05 | Motion blur | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 ### 12.2 Vision Metrics
 
@@ -345,13 +345,13 @@ Vision testing checks whether the Jetson can detect pillars and track lines with
 |---|---:|
 | Pillar confidence threshold | 0.30 |
 | Corner line confidence threshold | 0.48 |
-| YOLO version | [TODO] |
-| Pillar model dataset size | [TODO] |
-| Line/corner model dataset size | [TODO] |
-| Inference FPS on Jetson | [TODO] |
-| Inference time per frame | [TODO] |
-| False positive rate | [TODO] |
-| False negative rate | [TODO] |
+| YOLO version | Ultralytics YOLO11n |
+| Pillar model dataset size | 100 images |
+| Line/corner model dataset size | 180 images |
+| Inference FPS on Jetson | Approximately 60 FPS |
+| Inference time per frame | Approximately 16.7 ms/frame at 60 FPS |
+| False positive rate | Not recorded yet |
+| False negative rate | Not recorded yet |
 
 ### 12.3 Vision Issues Found
 
@@ -372,24 +372,24 @@ Obstacle testing validates red/green rule behavior.
 
 | Test ID | Scenario | Expected behavior | Result | Notes |
 |---|---|---|---|---|
-| OBS-01 | Single red pillar centered | Pass red on right | [TODO] |  |
-| OBS-02 | Single green pillar centered | Pass green on left | [TODO] |  |
-| OBS-03 | Red pillar near left side | Pass right without wall hit | [TODO] |  |
-| OBS-04 | Green pillar near right side | Pass left without wall hit | [TODO] |  |
-| OBS-05 | Two pillars visible | Choose nearest/largest valid pillar | [TODO] |  |
-| OBS-06 | Pillar near corner | Avoid command conflict with cornering | [TODO] |  |
-| OBS-07 | Lost detection for one frame | Hold last valid detection briefly | [TODO] |  |
-| OBS-08 | Detection flicker | Debounce prevents repeated reactions | [TODO] |  |
-| OBS-09 | High steering error | Clamp steering and reduce speed | [TODO] |  |
-| OBS-10 | Full Obstacle Challenge run | Complete laps while obeying signs | [TODO] |  |
+| OBS-01 | Single red pillar centered | Pass red on right | Not recorded yet |  |
+| OBS-02 | Single green pillar centered | Pass green on left | Not recorded yet |  |
+| OBS-03 | Red pillar near left side | Pass right without wall hit | Not recorded yet |  |
+| OBS-04 | Green pillar near right side | Pass left without wall hit | Not recorded yet |  |
+| OBS-05 | Two pillars visible | Choose nearest/largest valid pillar | Not recorded yet |  |
+| OBS-06 | Pillar near corner | Avoid command conflict with cornering | Not recorded yet |  |
+| OBS-07 | Lost detection for one frame | Hold last valid detection briefly | Not recorded yet |  |
+| OBS-08 | Detection flicker | Debounce prevents repeated reactions | Not recorded yet |  |
+| OBS-09 | High steering error | Clamp steering and reduce speed | Not recorded yet |  |
+| OBS-10 | Full Obstacle Challenge run | Complete laps while obeying signs | Not recorded yet |  |
 
 ### 13.2 PDI Tuning Log
 
 | Test ID | Kp | Ki | Kd | Speed | Steering clamp | Result |
 |---|---:|---:|---:|---:|---:|---|
-| PDI-01 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | Full-lock / too aggressive |
-| PDI-02 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | Softer response |
-| PDI-03 | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
+| PDI-01 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Full-lock / too aggressive |
+| PDI-02 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Softer response |
+| PDI-03 | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 ---
 
@@ -401,11 +401,11 @@ Open Challenge testing focuses on three-lap completion without pillars.
 
 | Run ID | Software | Speed | Laps completed | Time | Result | Failure / notes |
 |---|---|---:|---:|---:|---|---|
-| OPEN-01 | v1 | [TODO] | [TODO] | [TODO] | Failed | Early corner logic |
-| OPEN-02 | v2 | [TODO] | [TODO] | [TODO] | Partial | PID fallback under tuning |
-| OPEN-03 | v3 | [TODO] | [TODO] | [TODO] | Failed/unstable | Over-complex matrix behavior |
-| OPEN-04 | v4 | [TODO] | 1.0+ | [TODO] | Partial/successful lap | Single clean laps achieved repeatedly |
-| OPEN-05 | v4 | [TODO] | 2.5 | [TODO] | Partial | Lane-keeping failure before full 3 laps |
+| OPEN-01 | v1 | Not recorded yet | Not recorded yet | Not recorded yet | Failed | Early corner logic |
+| OPEN-02 | v2 | Not recorded yet | Not recorded yet | Not recorded yet | Partial | PID fallback under tuning |
+| OPEN-03 | v3 | Not recorded yet | Not recorded yet | Not recorded yet | Failed/unstable | Over-complex matrix behavior |
+| OPEN-04 | v4 | Not recorded yet | 1.0+ | Not recorded yet | Partial/successful lap | Single clean laps achieved repeatedly |
+| OPEN-05 | v4 | Not recorded yet | 2.5 | Not recorded yet | Partial | Lane-keeping failure before full 3 laps |
 
 ### 14.2 Open Challenge Failure Modes
 
@@ -421,27 +421,27 @@ Open Challenge testing focuses on three-lap completion without pillars.
 
 ## 15. Parking Testing
 
-Parking testing is not yet fully documented, but it should be included because the Obstacle Challenge includes parking after the laps.
+Parking is currently marked N/A because it has not been evaluated as a separate completed metric in the current test data.
 
 ### 15.1 Parking Test Plan
 
 | Test ID | Scenario | Expected behavior | Result |
 |---|---|---|---|
-| PARK-01 | Detect parking section | Robot identifies correct area | [TODO] |
-| PARK-02 | Align parallel to wall | Side distances show parallel position | [TODO] |
-| PARK-03 | Enter parking lot partially | Robot enters without touching markers | [TODO] |
-| PARK-04 | Full parallel park | Robot stops fully inside and parallel | [TODO] |
-| PARK-05 | Marker avoidance | Robot avoids magenta parking limits | [TODO] |
+| PARK-01 | Detect parking section | Robot identifies correct area | Not recorded yet |
+| PARK-02 | Align parallel to wall | Side distances show parallel position | Not recorded yet |
+| PARK-03 | Enter parking lot partially | Robot enters without touching markers | Not recorded yet |
+| PARK-04 | Full parallel park | Robot stops fully inside and parallel | Not recorded yet |
+| PARK-05 | Marker avoidance | Robot avoids magenta parking limits | Not recorded yet |
 
 ### 15.2 Parking Metrics
 
 | Metric | Value |
 |---|---:|
-| Parking success rate | [TODO] |
-| Average parking time | [TODO] |
-| Final wall distance front/rear | [TODO] |
-| Parallel error | [TODO] |
-| Marker contact incidents | [TODO] |
+| Parking success rate | N/A |
+| Average parking time | Not recorded yet |
+| Final wall distance front/rear | Not recorded yet |
+| Parallel error | Not recorded yet |
+| Marker contact incidents | Not recorded yet |
 
 ---
 
@@ -453,20 +453,20 @@ Power testing verifies that the robot can run a full challenge without brownouts
 
 | Test ID | Start voltage | End voltage | Duration | Load condition | Result |
 |---|---:|---:|---:|---|---|
-| PWR-01 | [TODO] | [TODO] | 3 min | Competition run | [TODO] |
-| PWR-02 | [TODO] | [TODO] | 10 min | Continuous driving | [TODO] |
-| PWR-03 | [TODO] | [TODO] | 20-30 min | Full electronics active | Estimated target | [TODO] |
+| PWR-01 | Not recorded yet | Not recorded yet | 3 min | Competition run | Not recorded yet |
+| PWR-02 | Not recorded yet | Not recorded yet | 10 min | Continuous driving | Not recorded yet |
+| PWR-03 | Not recorded yet | Not recorded yet | 20-30 min | Full electronics active | Estimated target | Not recorded yet |
 
 ### 16.2 Current Draw Measurements
 
 | Subsystem | Idle current | Typical current | Peak current | Notes |
 |---|---:|---:|---:|---|
-| Jetson Orin Nano | [TODO] | [TODO] | [TODO] | Measure during YOLO |
-| STM32F411 | ~10 mA estimate | [TODO] | [TODO] | Measure final |
+| Jetson Orin Nano | ~25W typical | ~40W peak | Measured/estimated workload | YOLO11n runtime observed at ~60 FPS |
+| STM32F411 | ~40 mA | ~0.13 W | Estimated | Powered from Jetson USB / CP2102 subtree |
 | MG996R servo | ~10 mA idle | 500-900 mA normal | 1.5-2.5 A stall | Estimate |
 | JGY-370B motor | 0.06-0.09 A no-load | 0.2-0.3 A normal | 1.3-2.0 A stall | Estimate |
-| VL53L4CD sensors | [TODO] | 15-25 mA each | [TODO] | Estimate |
-| VL53L8CH | [TODO] | [TODO] | [TODO] | Measure/spec needed |
+| VL53L4CD sensors | ~60 mA total | ~0.30 W total | Estimate | Three side sensors |
+| VL53L8CX | ~60 mA typical, ~120 mA peak | ~0.30 W typical | Estimate/spec | Front matrix sensor |
 
 ### 16.3 Power Issues to Watch
 
@@ -504,24 +504,24 @@ Keep this table updated with final values.
 
 | Parameter | Current value | Test basis | Notes |
 |---|---:|---|---|
-| Straight speed | [TODO] | Open Challenge runs |  |
-| Corner speed | [TODO] | Corner tests |  |
-| Obstacle speed | [TODO] | Pillar tests |  |
-| Steering center | [TODO] | Servo alignment |  |
-| Max left steering | [TODO] | Mechanical range |  |
-| Max right steering | [TODO] | Mechanical range |  |
-| Target right wall distance | [TODO] | Lane tests |  |
-| Distance gain | [TODO] | Lane tests |  |
-| Heading gain | [TODO] | Lane tests |  |
+| Straight speed | Not recorded yet | Open Challenge runs |  |
+| Corner speed | Not recorded yet | Corner tests |  |
+| Obstacle speed | Not recorded yet | Pillar tests |  |
+| Steering center | Not recorded yet | Servo alignment |  |
+| Max left steering | Not recorded yet | Mechanical range |  |
+| Max right steering | Not recorded yet | Mechanical range |  |
+| Target right wall distance | Not recorded yet | Lane tests |  |
+| Distance gain | Not recorded yet | Lane tests |  |
+| Heading gain | Not recorded yet | Lane tests |  |
 | Corner trigger distance | ~100 cm | Front matrix tests | Confirm final |
 | Front matrix valid-cell count | >=2 | False trigger tests |  |
 | Pillar confidence threshold | 0.30 | Vision tests |  |
 | Corner confidence threshold | 0.48 | Vision tests |  |
-| PDI Kp | [TODO] | Obstacle tests |  |
-| PDI Ki | [TODO] | Obstacle tests |  |
-| PDI Kd | [TODO] | Obstacle tests |  |
-| Lost target timeout | [TODO] | Obstacle tests |  |
-| Debounce frames | [TODO] | Pillar counter tests |  |
+| PDI Kp | Not recorded yet | Obstacle tests |  |
+| PDI Ki | Not recorded yet | Obstacle tests |  |
+| PDI Kd | Not recorded yet | Obstacle tests |  |
+| Lost target timeout | Not recorded yet | Obstacle tests |  |
+| Debounce frames | Not recorded yet | Pillar counter tests |  |
 
 ---
 
@@ -545,11 +545,11 @@ Recommended definition:
 
 | Test group | Total runs | Successful runs | Partial runs | Failed runs | Success rate |
 |---|---:|---:|---:|---:|---:|
-| Open Challenge | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
-| Obstacle Challenge | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
-| Parking | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
-| Motor command tests | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
-| Sensor calibration tests | [TODO] | [TODO] | [TODO] | [TODO] | [TODO] |
+| Open Challenge | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| Obstacle Challenge | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| Parking | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| Motor command tests | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
+| Sensor calibration tests | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet | Not recorded yet |
 
 ---
 
@@ -662,7 +662,7 @@ The strongest testing-based improvements so far are:
 
 - replacing unreliable drivetrain and wheel choices,
 - using ToF sensors instead of ultrasonic sensors,
-- filtering the VL53L8CH front matrix to avoid false corner triggers,
+- filtering the VL53L8CX front matrix to avoid false corner triggers,
 - adding right-front/right-rear heading correction,
 - reducing blocking serial waits to protect YOLO detection timing,
 - pulsing critical motor commands,

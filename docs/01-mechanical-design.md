@@ -37,8 +37,8 @@ The final design uses a **3D-printed chassis**, **rear-wheel drive**, and **serv
 | Steering actuator | 1 servo | One steering actuator allowed | OK |
 | Differential drive | Not used | Differential wheeled base not allowed | OK |
 | Omnidirectional / ball wheels | Not used | Not allowed | OK |
-| Track width | [TODO: measure] | Must remain within 200 mm total vehicle width | Pending measurement |
-| Wheel diameter | [TODO: measure] | Not specified by WRO | Pending measurement |
+| Track width | 135 mm | Must remain within 200 mm total vehicle width | OK |
+| Wheel diameter | Not recorded yet | Not specified by WRO | Optional measurement |
 
 The robot remains below the maximum allowed envelope of **300 mm × 200 mm × 300 mm** and below the **1.5 kg** weight limit. The current mechanical margins are:
 
@@ -97,7 +97,7 @@ The main design risk is that printed parts can flex or crack around screw holes,
 | Height | 18.0 cm |
 | Weight | 1.35 kg |
 | Wheelbase | 13.9 cm |
-| Track width | [TODO: measure distance between left and right wheels] |
+| Track width | 13.5 cm, center-to-center between left and right wheels |
 | Drive axle | Rear axle |
 | Steering axle | Front axle |
 | Chassis type | 3D printed |
@@ -200,7 +200,7 @@ linear_speed = wheel_circumference × wheel_RPM / 60
 Because the exact wheel diameter still needs to be measured, the final speed estimate is left as a calculation template:
 
 ```text
-wheel_diameter = [TODO: measure in meters]
+wheel_diameter = not recorded yet
 wheel_RPM = 150 RPM no-load
 
 linear_speed = pi × wheel_diameter × 150 / 60
@@ -210,8 +210,8 @@ Example table to complete after wheel diameter measurement:
 
 | Wheel diameter | Estimated no-load speed |
 |---:|---:|
-| [TODO] mm | [TODO] m/s |
-| [TODO] mm | [TODO] cm/s |
+| Not recorded yet | Not calculated because wheel diameter was not recorded |
+| Not recorded yet | Not calculated because wheel diameter was not recorded |
 
 The actual driving speed will be lower than the no-load calculation because the robot carries approximately **1.35 kg**, and because acceleration, steering friction, floor contact, battery voltage, and PWM speed limits reduce real movement speed.
 
@@ -251,10 +251,10 @@ To complete the final calculation, the following values should be measured or co
 
 | Parameter | Value |
 |---|---:|
-| Motor output torque at 150 RPM | [TODO: confirm from selected motor table] |
-| Wheel radius | [TODO: measure] |
-| Drivetrain efficiency | [TODO: estimate; worm gear losses expected] |
-| Estimated wheel force | [TODO: calculate] |
+| Motor output torque at 150 RPM | Not recorded from final supplier table; drivetrain validated through physical tests |
+| Wheel radius | Not recorded yet |
+| Drivetrain efficiency | Not recorded; worm gear losses expected |
+| Estimated wheel force | Not calculated; practical torque validated by test driving |
 
 ### 8.1 Practical Torque Validation
 
@@ -371,8 +371,8 @@ The final design uses wider rubber tires with more contact area. This improved g
 |---|---|
 | Thinner wheels | Lower contact area; slipped on the track |
 | Wider rubber wheels | Better traction and more stable steering |
-| Very soft tires | [TODO: test if used] |
-| Very hard tires | [TODO: test if used] |
+| Very soft tires | Not used in the final documented configuration |
+| Very hard tires | Not used in the final documented configuration |
 
 The selected wheels improve reliability, but they may increase rolling resistance. The team accepted this because reliable wall-following and obstacle avoidance are more important than maximum speed.
 
@@ -382,12 +382,12 @@ The following values should be added after final measurement:
 
 | Measurement | Value |
 |---|---:|
-| Wheel diameter | [TODO] |
-| Wheel width | [TODO] |
-| Track width | [TODO] |
-| Minimum turning radius | [TODO] |
-| Maximum left steering angle | [TODO] |
-| Maximum right steering angle | [TODO] |
+| Wheel diameter | Not recorded yet |
+| Wheel width | 2.5 cm |
+| Track width | 13.5 cm |
+| Minimum turning radius | Not recorded yet |
+| Maximum left steering angle | Not recorded yet |
+| Maximum right steering angle | Not recorded yet |
 
 ---
 

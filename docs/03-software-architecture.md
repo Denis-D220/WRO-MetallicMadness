@@ -41,7 +41,7 @@ flowchart TD
     J --> G
 
     G --> K[VL53L4CD Side Sensors]
-    G --> L[VL53L8CH Front Matrix Sensor]
+    G --> L[VL53L8CX Front Matrix Sensor]
     G --> M[IMU]
 ```
 
@@ -87,7 +87,7 @@ The STM32F411 is the low-level real-time controller.
 | Encoder reading | Reads quadrature encoder phase A/B |
 | RPM calculation | Calculates speed from encoder counts over time |
 | VL53L4CD polling | Reads left, right-front, and right-rear ToF sensors |
-| VL53L8CH matrix polling | Reads front matrix distance sensor |
+| VL53L8CX matrix polling | Reads front matrix distance sensor |
 | IMU acquisition | Reads gyroscope and accelerometer data |
 | Response framing | Sends status/sensor responses back to Jetson |
 
@@ -291,7 +291,7 @@ sequenceDiagram
     J->>J: Detect line/corner cues
 
     J->>S: READ FRONT MATRIX 0x0003
-    S->>F: Read VL53L8CH matrix
+    S->>F: Read VL53L8CX matrix
     S-->>J: Matrix distances/statuses
 
     J->>J: Fuse camera + front matrix + side ToF
@@ -400,7 +400,7 @@ The Open Challenge has no red or green traffic signs. The goal is to complete th
 | Camera line/corner model | Detect blue/orange track line and corner direction cues |
 | Right-front VL53L4CD | Wall distance |
 | Right-rear VL53L4CD | Heading relative to wall |
-| Front VL53L8CH matrix | Front barrier/corner trigger |
+| Front VL53L8CX matrix | Front barrier/corner trigger |
 | Encoder | Motor speed/distance feedback on STM32 |
 
 ### 11.2 Wall-Following Logic
@@ -422,7 +422,7 @@ Corner detection combines three cues:
 1. **Camera line/corner detection**  
    Detects blue/orange line patterns and helps determine direction.
 
-2. **Front VL53L8CH matrix**  
+2. **Front VL53L8CX matrix**  
    Detects approaching front wall or barrier.
 
 3. **Right-wall-collapse fallback**  
@@ -516,7 +516,7 @@ The Jetson uses Ultralytics YOLO models for visual perception.
 | Model | Purpose | Classes |
 |---|---|---|
 | Pillar model | Detect traffic signs | `Green_Pillar`, `Red_Pillar` |
-| Line/corner model | Detect track/corner line cues | [TODO: fill exact blue/orange line class names] |
+| Line/corner model | Detect track/corner line cues | `Blue_line`, `Orange_line` |
 
 ### 13.3 Why YOLO Is Used
 
@@ -537,13 +537,13 @@ The following metrics should be measured and added:
 
 | Metric | Value |
 |---|---|
-| YOLO version | [TODO: YOLOv8 or YOLO11] |
-| Pillar dataset size | [TODO] |
-| Line/corner dataset size | [TODO] |
-| Annotation tool | [TODO] |
-| Training environment | [TODO] |
-| Inference FPS on Jetson | [TODO] |
-| Inference time per frame | [TODO] |
+| YOLO version | Ultralytics YOLO11n |
+| Pillar dataset size | 100 images |
+| Line/corner dataset size | 180 images |
+| Annotation tool | Roboflow |
+| Training environment | PC/GPU environment; Jetson used for inference only |
+| Inference FPS on Jetson | Approximately 60 FPS |
+| Inference time per frame | Approximately 16.7 ms/frame at 60 FPS |
 | Pillar confidence threshold | 0.30 |
 | Corner line confidence threshold | 0.48 |
 
@@ -581,7 +581,7 @@ The Jetson parser extracts distance and status values. Invalid or out-of-range v
 | Sensor group | Intended use | Polling style |
 |---|---|---|
 | Side VL53L4CD sensors | Continuous wall-following | ~20-25 Hz target |
-| Front matrix VL53L8CH | Corner/front-barrier trigger | On-demand or controlled polling |
+| Front matrix VL53L8CX | Corner/front-barrier trigger | On-demand or controlled polling |
 | IMU | Optional attitude support | On request / future enhancement |
 
 The front matrix is heavier than the side sensors, so it is not polled blindly at maximum rate during all driving phases.
@@ -689,14 +689,14 @@ Pending details to add:
 
 | Item | Value |
 |---|---|
-| Jetson OS | [TODO] |
-| Python version | [TODO] |
-| OpenCV version | [TODO] |
-| Ultralytics version | [TODO] |
-| PySerial version | [TODO] |
-| Servo controller port | [TODO] |
-| STM32 serial port | [TODO] |
-| Camera GStreamer command | [TODO] |
+| Jetson OS | JetPack-based NVIDIA Jetson Orin Nano setup; exact final version not recorded |
+| Python version | Python 3, exact final minor version not recorded |
+| OpenCV version | Installed for GStreamer/OpenCV camera pipeline; exact version not recorded |
+| Ultralytics version | Ultralytics YOLO11-compatible installation; exact package version not recorded |
+| PySerial version | Installed; exact package version not recorded |
+| Servo controller port | Pololu Micro Maestro USB serial; exact runtime port verified before tests |
+| STM32 serial port | STM32/CP2102 serial port; exact runtime port verified before tests |
+| Camera GStreamer command | Uses `nvarguscamerasrc` through OpenCV/GStreamer at 1280 x 720 |
 
 ### 18.2 STM32 Build and Flash
 
@@ -710,9 +710,9 @@ Pending details to add:
 
 | Item | Value |
 |---|---|
-| IDE/toolchain | [TODO: STM32CubeIDE / PlatformIO / Makefile] |
+| IDE/toolchain | STM32CubeIDE / STM32CubeMX with HAL |
 | MCU target | STM32F411CEU6 |
-| Flash method | [TODO] |
+| Flash method | ST-Link / STM32CubeIDE Debug or Run > Debug flashing workflow |
 | UART baud rate | 115200 |
 | Main firmware entry | `main.c` |
 
