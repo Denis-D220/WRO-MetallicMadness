@@ -1,8 +1,10 @@
 # Models
 
-This folder contains the trained machine-learning model files used by **MetallicMadness / ARBIBOT** for the WRO 2026 Future Engineers autonomous driving challenges.
+This folder contains the trained machine-learning model files and CAD model references used by **MetallicMadness / ARBIBOT** for the WRO 2026 Future Engineers autonomous driving challenges.
 
-The models are used by the NVIDIA Jetson Orin Nano for visual perception. They detect traffic pillars, colored track lines, and corner/line features that support the robot's navigation logic.
+The `.pt` files are used by the NVIDIA Jetson Orin Nano for visual perception. They detect traffic pillars, colored track lines, and corner/line features that support the robot's navigation logic.
+
+The `cad/` folder contains the current 3D chassis design exported as STL files. These CAD files support mechanical reproducibility of the robot.
 
 ---
 
@@ -13,7 +15,42 @@ The models are used by the NVIDIA Jetson Orin Nano for visual perception. They d
 | `best_model_1.pt` | Earlier YOLO11n pillar/object detection checkpoint. Kept for comparison and fallback testing. | Archived / backup |
 | `best_model_v2.pt` | Active YOLO11n pillar detection model used for the Obstacle Challenge. | Active |
 | `Best_Model_Corner.pt` | Active YOLO11n corner/line detection model used for the Open Challenge. | Active |
-| `cad/` | Folder reserved for CAD/model-related files or exported mechanical model references. | Support folder |
+| `cad/` | CAD folder containing the three-layer chassis STL design. | Active mechanical reference |
+
+---
+
+## CAD Chassis Design
+
+The `cad/` folder contains the current 3D-printable chassis design for ARBIBOT. The chassis is organized as a three-layer structure so the robot can separate the bottom mechanical base, middle support layer, and top/electronics mounting layer.
+
+| CAD file | Purpose |
+|---|---|
+| `cad/Chasis_Bottom.stl` | Bottom chassis layer. Supports the lower mechanical structure, wheel/motor layout, and base mounting geometry. |
+| `cad/Chasis_Middle.stl` | Middle chassis layer. Provides intermediate support and spacing between the lower mechanical system and upper electronics layout. |
+| `cad/Chasis_Top.stl` | Top chassis layer. Supports upper electronics, mounting points, and overall structure closure. |
+
+The filename uses `Chasis` to match the current repository files. If the files are renamed later to `Chassis_*`, this README and any links in the Engineering Journal should be updated in the same commit.
+
+### CAD Design Notes
+
+The three-layer chassis helps the robot remain reproducible because each major structural level is stored as an STL file. The design supports:
+
+- rear-wheel drive motor installation,
+- steering servo and linkage placement,
+- wheel and axle clearance,
+- sensor and bumper mounting,
+- electronics placement,
+- battery and wiring organization,
+- and future mechanical iteration.
+
+Related documentation:
+
+```text
+docs/01-mechanical-design.md
+engineering-journal/WRO_Engineering_Journal_MetallicMadness.md
+v-photos/motor-stearing.png
+v-photos/car-bottom.png
+```
 
 ---
 
@@ -221,12 +258,23 @@ src/color_tuning.py
 Related documentation:
 
 ```text
+docs/01-mechanical-design.md
 docs/03-software-architecture.md
 docs/04-obstacle-strategy.md
 docs/06-testing-and-tuning.md
 docs/07-calibration-procedures.md
 docs/10-risk-register.md
 engineering-journal/WRO_Engineering_Journal_MetallicMadness.md
+```
+
+Related media and CAD evidence:
+
+```text
+Models/cad/Chasis_Bottom.stl
+Models/cad/Chasis_Middle.stl
+Models/cad/Chasis_Top.stl
+v-photos/car-bottom.png
+v-photos/motor-stearing.png
 ```
 
 ---
@@ -242,7 +290,15 @@ corner_yolo_v1.pt
 corner_yolo_v2.pt
 ```
 
-The current filenames are kept because they match the existing project history and may be referenced by the Python scripts. If a model file is renamed, the Python code and documentation must be updated in the same commit.
+Recommended naming convention for future CAD files:
+
+```text
+chassis_bottom_v1.stl
+chassis_middle_v1.stl
+chassis_top_v1.stl
+```
+
+The current filenames are kept because they match the existing project history and may be referenced by the repository. If a model or CAD file is renamed, the code and documentation must be updated in the same commit.
 
 ---
 
@@ -262,6 +318,13 @@ Then add the models normally:
 
 ```bash
 git add Models/*.pt
+```
+
+STL files can also become large. If GitHub rejects the CAD files, track them with Git LFS too:
+
+```bash
+git lfs track "*.stl"
+git add .gitattributes
 ```
 
 ---
@@ -298,6 +361,14 @@ When a model changes:
 5. Record test results in `docs/06-testing-and-tuning.md`.
 6. Keep old models only if they are useful for comparison or rollback.
 
+When the CAD chassis changes:
+
+1. Add the new `.stl` files to `Models/cad/`.
+2. Update this README with the new filenames and purpose.
+3. Update `docs/01-mechanical-design.md` if the chassis geometry or layer structure changes.
+4. Update the Engineering Journal if the CAD design is part of the final reproducibility package.
+5. Keep older CAD files only if they document an important design iteration.
+
 ---
 
 ## Current Status
@@ -315,6 +386,14 @@ The active challenge models are:
 ```text
 Obstacle Challenge: best_model_v2.pt
 Open Challenge: Best_Model_Corner.pt
+```
+
+The CAD folder includes the current three-layer chassis STL design:
+
+```text
+cad/Chasis_Bottom.stl
+cad/Chasis_Middle.stl
+cad/Chasis_Top.stl
 ```
 
 The remaining improvement for this folder is optional: record future numeric validation metrics, such as mAP, precision, and recall, if those values are exported from Ultralytics or Roboflow.
