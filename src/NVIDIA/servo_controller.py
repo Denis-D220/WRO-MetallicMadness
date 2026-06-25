@@ -10,9 +10,9 @@ PORT = "/dev/ttyACM0"
 SERVO_CHANNELS = {
     0: {
         "name": "steering",
-        "min": 1280,
-        "max": 2900,
-        "middle": 1590
+        "min": 1140,        # full LEFT  (recalibrated on test_servov2.py)
+        "max": 2950,        # full RIGHT
+        "middle": 1520      # true center (was 1550 -> 30us right bias removed)
     }
 }
 

@@ -19,6 +19,7 @@ CMD_REVERSE_CONTINUOUS = 0x0005
 CMD_MOVE_FORWARD_DEGREE = 0x0101
 CMD_MOVE_REVERSE_DEGREE = 0x0102
 CMD_STOP = 0x0103
+CMD_SET_SPEED = 0x0104
 
 
 # ============================================================
@@ -394,6 +395,31 @@ class MotorSerial:
     # --------------------------------------------------------
     # Public motor commands
     # --------------------------------------------------------
+
+    def set_speed(
+        self,
+        percent: int,
+        timeout_s: float = 2.0,
+        wait_response: bool = True,
+    ) -> Optional[str]:
+        """
+        Command:
+            0x0104 - SET SPEED (percent)
+
+        Sets global_motor_speed on the STM32, which forward/reverse use. Send
+        this BEFORE forward_continuous() so the motor starts at this speed.
+        Payload is a single uint8 byte (0-100).
+        """
+        if not 0 <= percent <= 100:
+            raise ValueError("percent must be between 0 and 100")
+
+        return self.command(
+            CMD_SET_SPEED,
+            data=bytes([percent]),
+            timeout_s=timeout_s,
+            wait_response=wait_response,
+            name=f"SET SPEED {percent}%",
+        )
 
     def forward_continuous(self, timeout_s: float = 2.0, wait_response: bool = True,) -> Optional[str]:
         """

@@ -1,0 +1,6 @@
+R_gain=1.13
+G_gain=0.88
+B_gain=0.65
+bright=10
+sat=1.18
+conf=0.48
