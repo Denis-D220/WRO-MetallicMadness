@@ -29,10 +29,13 @@ only WRITES (wait_response=False), guarded by a lock. Same as v2.
 main_challenge_01_v2.py is left UNTOUCHED as the working backup.
 """
 
+import logging
 import os
 import statistics
+import sys
 import time
 from collections import deque
+from logging.handlers import RotatingFileHandler
 
 import cv2
 import Jetson.GPIO as GPIO
@@ -43,6 +46,61 @@ from turn_models import CornerDetector, draw_result
 from color_tuning import apply_color_tuning
 from sensor_distance_v3 import SideSensorsV3, FRONT_BARRIER_ROW
 from pid_line_follower import LineFollowerPID
+
+
+# =========================================================
+# LOGGING
+# =========================================================
+# main.py runs unattended as a systemd service at competition startup (see
+# service/wro-main.service), so every lifecycle event must land in a file we can
+# read after the run -- the judges' table has no console. setup_logging() wires a
+# rotating file (logs/main.log, 5 MB x 5) AND stdout, so the same messages show
+# live when run by hand and persist on disk under systemd. The high-frequency
+# per-frame telemetry ([WATCH] / [FRONT 4x4]) is emitted at DEBUG so it does not
+# flood INFO logs; set WRO_LOG_LEVEL=DEBUG (or LOG_LEVEL constant) to see it.
+
+LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+LOG_FILE = os.path.join(LOG_DIR, "main.log")
+LOG_LEVEL = os.environ.get("WRO_LOG_LEVEL", "INFO").upper()
+LOG_MAX_BYTES = 5 * 1024 * 1024     # 5 MB per file before rotating
+LOG_BACKUPS = 5                     # keep 5 rotated backups (~25 MB total)
+
+logger = logging.getLogger("wro.main")
+
+
+def setup_logging(level: str = LOG_LEVEL) -> logging.Logger:
+    """Configure logging to BOTH a rotating file (logs/main.log) and stdout.
+
+    Idempotent (safe to call once at startup): clears any existing handlers so a
+    re-run under systemd Restart= does not duplicate lines. stdout is line-/
+    stream-flushed and PYTHONUNBUFFERED=1 is set in the unit file, so log lines
+    appear promptly in `journalctl` instead of being held in a pipe buffer.
+    """
+    os.makedirs(LOG_DIR, exist_ok=True)
+
+    numeric_level = getattr(logging, level, logging.INFO)
+    root = logging.getLogger()
+    root.setLevel(numeric_level)
+    for handler in list(root.handlers):   # avoid duplicate handlers on re-init
+        root.removeHandler(handler)
+
+    fmt = logging.Formatter(
+        "%(asctime)s %(levelname)-7s [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    file_handler = RotatingFileHandler(
+        LOG_FILE, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUPS)
+    file_handler.setFormatter(fmt)
+    file_handler.setLevel(numeric_level)
+    root.addHandler(file_handler)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(fmt)
+    console_handler.setLevel(numeric_level)
+    root.addHandler(console_handler)
+
+    return logger
 
 
 class SensorAdapter(SideSensorsV3):
@@ -422,7 +480,7 @@ def set_pin():
     GPIO.cleanup()
     GPIO.setmode(GPIO.BOARD)
     GPIO.setup(BUTTON_PIN, GPIO.IN)
-    print("Button input pin:", GPIO.input(BUTTON_PIN))
+    logger.info("Button input pin: %s", GPIO.input(BUTTON_PIN))
     time.sleep(1)
 
 
@@ -514,13 +572,17 @@ def main():
     then loop STRAIGHT (wall-follow + corner watch) and CORNER (timed turn +
     follower recovery) until 12 corners (3 laps) are done, auto-detecting the
     track direction at corner 1. Always stops the motor and cleans up on exit."""
+    logger.info("=== WRO 2026 Metallic Madness main.py starting ===")
+    logger.info("Competition waiting mode: initializing hardware, motors will "
+                "stay STOPPED until the Start button is pressed.")
     set_pin()
-    print("Button pin ready.")
+    logger.info("Button pin ready (sensor init).")
 
     can_show = SHOW_VIEW and bool(os.environ.get("DISPLAY"))
     if SHOW_VIEW and not can_show:
-        print("SHOW_VIEW requested but no $DISPLAY; running headless.")
+        logger.warning("SHOW_VIEW requested but no $DISPLAY; running headless.")
 
+    logger.info("Initializing servo/steering controller on %s", SERVO_PORT)
     servo = ServoController(port=SERVO_PORT, baud_rate=SERVO_BAUD)
     servo.connect()
     servo.center_steering()
@@ -528,6 +590,7 @@ def main():
     # ---- Side sensors own the serial; motor shares it if same port ----
     sensors = None
     if ENABLE_PID:
+        logger.info("Initializing side/front sensors on %s", SENSOR_PORT)
         sensors = SensorAdapter(port=SENSOR_PORT, lr_hz=LR_HZ, front_hz=FRONT_HZ)
         sensors.open()
         # Keep the heavy VL53L8CX matrix poll OFF until corner 1 locks the
@@ -535,12 +598,13 @@ def main():
         # start frame on the shared bus). Enabled right after the lock below.
         sensors.set_front_enabled(False)
 
+    logger.info("Initializing motor/serial controller on %s", MOTOR_PORT)
     motor = MotorSerial(MOTOR_PORT, debug=False)
     shared = ENABLE_PID and (SENSOR_PORT == MOTOR_PORT)
     if shared:
         motor.ser = sensors.ser          # reuse the sensor's serial object
         motor_lock = sensors.write_lock
-        print("[main] motor sharing the sensor serial link")
+        logger.info("Motor sharing the sensor serial link (%s)", MOTOR_PORT)
     else:
         motor.open()
         motor_lock = None
@@ -590,12 +654,14 @@ def main():
         heading_max=WF_HEADING_MAX_MM, median_window=PID_MEDIAN_WINDOW,
     )
 
-    print("Loading corner detector...")
+    logger.info("Loading corner detector (camera/model init)...")
     detector = CornerDetector()
 
+    logger.info("Opening camera pipeline (GStreamer/nvargus)...")
     cap = cv2.VideoCapture(CAMERA_PIPELINE, cv2.CAP_GSTREAMER)
     if not cap.isOpened():
-        print("Error: Could not open camera. Try: sudo systemctl restart nvargus-daemon")
+        logger.error("Could not open camera. Try: "
+                     "sudo systemctl restart nvargus-daemon")
         servo.close()
         if sensors:
             sensors.close()
@@ -603,6 +669,7 @@ def main():
             motor.close()
         GPIO.cleanup()
         raise SystemExit(1)
+    logger.info("Camera opened.")
 
     def steer_straight(outer_side):
         """Steer on the straight.
@@ -729,11 +796,21 @@ def main():
         return "left" if (lf > rf) else "right"
 
     try:
-        print(f"Ready. {NUM_LAPS} lap(s) = {TOTAL_CORNERS} corners. "
-              f"PID={'ON' if ENABLE_PID else 'OFF'}.")
-        print("Press the button to START...")
+        # SAFETY: force the motor into a stopped/safe state BEFORE waiting for the
+        # Start button. WRO rules forbid any motion before the judge says "Go" and
+        # the single Start button is pressed; the car may have powered on with the
+        # STM32 in an unknown state, so we pulse STOP (survives a dropped frame on
+        # the shared bus) and center the steering first. Nothing below moves the
+        # car until wait_for_button_press() returns.
+        motor_pulse(motor_stop)
+        servo.center_steering()
+        logger.info("Initial safe state: motor STOPPED, steering centered.")
+
+        logger.info("Ready. %d lap(s) = %d corners. PID=%s.",
+                    NUM_LAPS, TOTAL_CORNERS, "ON" if ENABLE_PID else "OFF")
+        logger.info("WAITING for Start button (press to START)...")
         wait_for_button_press()
-        print("START")
+        logger.info("Start button PRESSED -> START. Round/challenge started.")
 
         # Warm up the camera + detector BEFORE moving: pull frames so the auto-
         # exposure settles and YOLO's slow first inference is done. Otherwise
@@ -760,7 +837,7 @@ def main():
             motor_set_speed(MOTOR_SPEED_PCT)
             motor_forward()
             time.sleep(0.04)
-        print(f"Motor speed set to {MOTOR_SPEED_PCT}%")
+        logger.info("Motor speed set to %d%% -- vehicle moving.", MOTOR_SPEED_PCT)
         motor_forward()
 
         # Motor is going -> safe to turn the front matrix on now (kept off through
@@ -952,27 +1029,28 @@ def main():
                 sides_s = (f"L={ssnap.get('left_mm')} "
                            f"RF={ssnap.get('right_front_mm')} "
                            f"RR={ssnap.get('right_rear_mm')}") if ssnap else "-"
-                print(f"[WATCH] both={both_lines_present(result)} seen={both_seen} "
-                      f"near={result['nearest_color']} close={close_s} "
-                      f"latch={latched_turn} dir={track_dir} "
-                      f"confirm={confirm}/{CONFIRM_FRAMES} "
-                      f"low={outer_low_frames}/{SENSOR_CORNER_FRAMES} "
-                      f"arm={int(sensor_armed)} "
-                      f"front={front_s}({front_cells}c) "
-                      f"fwin={front_win_frames}/{FRONT_CORNER_FRAMES} "
-                      f"fnear={front_near_frames}/{FRONT_EMERGENCY_FRAMES} "
-                      f"farm={int(front_armed)} "
-                      f"pre={prelock_frames}/{PRELOCK_CORNER_FRAMES} "
-                      f"votes(L={cam_left_votes}/R={cam_right_votes}) "
-                      f"[{sides_s}] "
-                      f"corners={corners_done}/{TOTAL_CORNERS} | {steer_info}")
+                logger.debug(
+                      "[WATCH] both=%s seen=%s near=%s close=%s latch=%s dir=%s "
+                      "confirm=%d/%d low=%d/%d arm=%d front=%s(%dc) "
+                      "fwin=%d/%d fnear=%d/%d farm=%d pre=%d/%d "
+                      "votes(L=%d/R=%d) [%s] corners=%d/%d | %s",
+                      both_lines_present(result), both_seen,
+                      result['nearest_color'], close_s, latched_turn, track_dir,
+                      confirm, CONFIRM_FRAMES,
+                      outer_low_frames, SENSOR_CORNER_FRAMES, int(sensor_armed),
+                      front_s, front_cells,
+                      front_win_frames, FRONT_CORNER_FRAMES,
+                      front_near_frames, FRONT_EMERGENCY_FRAMES, int(front_armed),
+                      prelock_frames, PRELOCK_CORNER_FRAMES,
+                      cam_left_votes, cam_right_votes, sides_s,
+                      corners_done, TOTAL_CORNERS, steer_info)
                 if DEBUG_FRONT_MATRIX and sensors is not None:
                     rows = sensors.snapshot()["front_matrix"]
                     if rows:
                         cells = " / ".join(
                             " ".join(f"{v:4d}" for v in r) for r in rows)
-                        print(f"        [FRONT 4x4] {cells}  "
-                              f"(row{FRONT_BARRIER_ROW}->front_mm={front_s})")
+                        logger.debug("        [FRONT 4x4] %s  (row%s->front_mm=%s)",
+                                     cells, FRONT_BARRIER_ROW, front_s)
 
             if can_show:
                 view = apply_color_tuning(frame, detector.color_params)
@@ -1013,9 +1091,10 @@ def main():
                         continue
                     track_dir = emergency_dir(snap_now, right_in_front)
                     dir_src = "EMERGENCY-sensor(no camera vote)"
-                print(f"*** Track direction LOCKED: {track_dir} via {dir_src} "
-                      f"(outer wall = {outer_for(track_dir)} sensor; "
-                      f"votes L={cam_left_votes}/R={cam_right_votes}) ***")
+                logger.info("*** Track direction LOCKED: %s via %s "
+                            "(outer wall = %s sensor; votes L=%d/R=%d) ***",
+                            track_dir, dir_src, outer_for(track_dir),
+                            cam_left_votes, cam_right_votes)
                 # Direction known -> make sure the front matrix poll is on for the
                 # remaining corners (already on if FRONT_ENABLE_FROM_START).
                 if sensors is not None:
@@ -1030,11 +1109,12 @@ def main():
             else:
                 trigger = f"sensor(outer<{SENSOR_CORNER_MM:.0f})"
             lap = corners_done // CORNERS_PER_LAP + 1
-            print(f"Corner {corners_done + 1}/{TOTAL_CORNERS} (lap {lap})  "
-                  f"turn -> {direction}  (via {trigger}, latch={latched_turn})")
+            logger.info("Corner %d/%d (lap %d)  turn -> %s  (via %s, latch=%s)",
+                        corners_done + 1, TOTAL_CORNERS, lap, direction,
+                        trigger, latched_turn)
 
             servo.steer_delta(steer_us_for(direction), channel=0)
-            print(f"  TURN {direction.upper()} ({TURN_TIME_S:.2f}s)")
+            logger.info("  TURN %s (%.2fs)", direction.upper(), TURN_TIME_S)
             if sleep_with_abort(TURN_TIME_S):
                 aborted = True
                 break
@@ -1060,7 +1140,7 @@ def main():
             # wall; do NOT reset after -- keep the lane state it just established.
             pid.reset()
             hwf.reset()
-            print(f"  cooldown follow {CORNER_COOLDOWN_S:.2f}s (no detection)")
+            logger.info("  cooldown follow %.2fs (no detection)", CORNER_COOLDOWN_S)
             cd_deadline = time.monotonic() + CORNER_COOLDOWN_S
             while time.monotonic() < cd_deadline:
                 if button_pressed():
@@ -1083,23 +1163,39 @@ def main():
 
         # ---- Finish ----
         if not aborted:
-            print(f"All {TOTAL_CORNERS} corners done. Finish straight {FINISH_STRAIGHT_S:.2f}s")
+            logger.info("All %d corners done. Finish straight %.2fs",
+                        TOTAL_CORNERS, FINISH_STRAIGHT_S)
             servo.center_steering()
             aborted = sleep_with_abort(FINISH_STRAIGHT_S)
 
         motor_pulse(motor_stop)              # pulse so the button always halts it
         servo.center_steering()
-        print("ABORTED. Motor stopped." if aborted else "DONE: laps completed. Motor stopped.")
+        if aborted:
+            logger.info("ABORTED. Motor stopped.")
+        else:
+            logger.info("DONE: laps completed. Motor stopped.")
 
     except KeyboardInterrupt:
-        print("\nKeyboardInterrupt: stopping.")
+        logger.info("KeyboardInterrupt: stopping.")
         motor_pulse(motor_stop)
 
-    finally:
+    except Exception:
+        # Fatal: log the full traceback so an unattended systemd run leaves a
+        # diagnosable record, then re-raise so the unit exits non-zero (Restart=
+        # on-failure can act). The finally block still stops the motor first.
+        logger.exception("FATAL exception in main loop -- stopping motor.")
         try:
             motor_pulse(motor_stop)
         except Exception:
-            pass
+            logger.exception("Failed to stop motor during fatal handler.")
+        raise
+
+    finally:
+        logger.info("Clean shutdown: stopping motor and releasing hardware.")
+        try:
+            motor_pulse(motor_stop)
+        except Exception:
+            logger.exception("Failed to stop motor during cleanup.")
         servo.center_steering()
         servo.close()
         if sensors:
@@ -1109,10 +1205,19 @@ def main():
         cap.release()
         cv2.destroyAllWindows()
         GPIO.cleanup()
-        print("Cleaned up. Exit.")
+        logger.info("Cleaned up. Exit.")
 
 
 if __name__ == "__main__":
     # No direction argument: WRO requires the car to AUTO-DETECT the track
     # direction at runtime from the camera (see camera_dir_vote / corner-1 lock).
-    main()
+    # setup_logging() FIRST so even an init-time crash is captured with a
+    # traceback in logs/main.log (and stdout -> journalctl under systemd).
+    setup_logging()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception:
+        logger.exception("Unhandled exception at top level -- exiting.")
+        raise
