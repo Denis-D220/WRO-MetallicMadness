@@ -1,0 +1,25 @@
+[Unit]
+Description=WRO 2026 Metallic Madness Main Robot Service
+# Wait until the system is fully multi-user (serial/USB/GPIO devices enumerated)
+# before launching the robot runtime.
+After=multi-user.target
+
+[Service]
+Type=simple
+User=daniel
+WorkingDirectory=/home/daniel/WRO2026-MetallicMadness
+# PYTHONUNBUFFERED=1 -> stdout/stderr are not held in a pipe buffer, so log lines
+# reach journalctl and the StandardOutput= file promptly (matches setup_logging()).
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/daniel/WRO2026-MetallicMadness/main.py
+# Only restart if main.py exits non-zero (a crash / fatal exception). A clean
+# finish (all laps done, exit 0) must NOT relaunch the car on the track.
+Restart=on-failure
+RestartSec=3
+# Append (do not truncate) so logs survive restarts. main.py ALSO writes its own
+# rotating logs/main.log via setup_logging(); these two capture raw stdout/stderr.
+StandardOutput=append:/home/daniel/WRO2026-MetallicMadness/logs/service.log
+StandardError=append:/home/daniel/WRO2026-MetallicMadness/logs/service-error.log
+
+[Install]
+WantedBy=multi-user.target
