@@ -1,566 +1,335 @@
+#!/usr/bin/env python3
 """
-main_challenge_01_v4.py  --  v2's proven camera-corners + PID wall-following,
-ported to the NEW VL53L8CX front + 3-side firmware. Tuning sandbox.
+main_challenge_v7.py  --  v6, plus backing out of a wedge.
 
-WHY v4 exists: v2 is the working base (camera reliably detects corners), but its
-old sensor parser cannot read the new firmware, so on the new robot EVERY side
-read came back -1 and the PID never actually wall-followed (it ran straight the
-whole time). v4 keeps v2's logic and swaps in the new-firmware reader so the
-sensors are live again.
+THE ONLY DIFFERENCE FROM v6 is the unwedge hook in the main loop: when the car
+has stopped moving against something, straighten, reverse an inch, restore the
+steering it had, and carry on. Everything else -- perception, the state
+machine, the turn profiles, the PID -- is v6 unchanged, so a v7 run stays
+comparable with a v6 run.
 
-Changes vs v2 (everything else is identical):
-  * Sensors: SideSensorsV3 via a thin adapter (SensorAdapter) that re-exposes
-    v2's snapshot keys. New firmware: 0x0105 -> RIGHT_FRONT|RIGHT_REAR|LEFT (all
-    three sides in one frame); 0x0003 -> VL53L8CX 4x4 matrix. The PID follows the
-    RIGHT_FRONT wall (mapped to right_mm); right_rear is available but unused for
-    now (kept simple, like v2).
-  * Front-barrier trigger: now driven by the 4x4 matrix (row 1 -> front_mm). The
-    barrier only enters row 1 at ~95 cm, so "clear road" == front INVALID (not a
-    big number); the arm/fire logic is matrix-aware (see the FRONT config below).
+The detection and the maneuver live in unwedge.py, imported not copied: the
+robot cannot OBSERVE hitting a wall (no bumper, no IMU, no encoder feedback,
+no current sensing), so the trigger is an inference, and the inference is the
+part worth getting right once. See behavior_manager.REVERSE_* and STUCK_*.
 
-    STRAIGHT : motor forward; steering = PID(left, right_front); camera + sensor
-               + front-matrix watch for a corner.
-    CORNER   : detection OFF; timed turn; cooldown straight; PID reset.
+NOTE ON KEEPING TWO MAINS. This file is a copy of v6's loop, so a fix made in
+one will NOT reach the other. Deliberate for now -- v6 stays as the known-good
+program while v7 is on trial -- but it is a debt, not a design: collapse them
+behind B.REVERSE_UNWEDGE once v7 has proved out on the mat.
 
-Shared serial link: the motor and the sensors are the SAME STM32 on one port, so
-the sensor object OWNS /dev/ttyUSB0 and reads; the motor reuses that serial and
-only WRITES (wait_response=False), guarded by a lock. Same as v2.
+v6's own header follows.
 
-main_challenge_01_v2.py is left UNTOUCHED as the working backup.
+three inputs, one controller.
+
+    CORNER CLASSIFIER   names the turn and its profile
+    WALL CLASSIFIER     names the kind of steering correction
+    ToF SENSORS + PID   decide how much, and when the car has arrived
+
+WHAT CHANGED FROM v5, AND WHY
+
+v5 found corners with the LINE DETECTOR: it looked for the blue/orange corner
+lines, derived a direction from the nearest line's colour, estimated "closeness"
+from where that line sat in the image, and then drove every corner with the same
+blind arc. Four things had to go right, and on the track they routinely did not:
+
+  * the direction flipped left/right within a single approach (left,left,left,
+    right,right -- and it committed on the last frame, into a wall);
+  * `both=0` on almost every approach, so the direction rested on the weakest
+    evidence available -- a lone line whose colour is unreliable;
+  * closeness is a position IN THE IMAGE, not a distance, so it said "a corner is
+    ahead" and never "you are there now" -- it once fired with the front ToF
+    still reading 1082 mm;
+  * one arc for every corner produced exits anywhere from R=33 to R=505.
+
+The corner CLASSIFIER answers all of that in one output. It names the turn
+(left/right) AND its severity (close/normal/open), so the direction needs no
+vote, the severity picks the steering profile, and the ToF says when to go. Same
+approach as the wall classifier, which is the one perception component that has
+been consistently right on this robot.
+
+WHAT IS UNCHANGED, DELIBERATELY
+    the state machine        behavior_manager.py  (v5's, with the classifier
+                             route added -- the priority order, the ToF vetoes,
+                             the re-arm guard and the emergency escalation all
+                             still apply)
+    race bookkeeping         race_manager.py
+    the ToF reader and       imported from main_challenge_01_v4 / v5, never
+    wall follower            copied -- two copies always drift
+
+STATUS: the logic in behavior_manager.py and race_manager.py is unit-tested off
+robot. EVERYTHING IN THIS FILE touches hardware and has NOT been run. Bench it
+with DRY_RUN = True (no motor) before letting it drive.
 """
 
-import logging
-import os
-import statistics
-import sys
 import time
-from collections import deque
-from logging.handlers import RotatingFileHandler
 
 import cv2
 import Jetson.GPIO as GPIO
 
-from servo_controller import ServoController
+import behavior_manager as B
+from behavior_manager import BehaviorManager, Percept
+from race_manager import RaceManager
+from color_tuning_Dualcam import (CAM_WIDTH, apply_color_tuning,
+                                  camera_pipeline, load_params)
 from motor_driver import MotorSerial
-from turn_models import CornerDetector, draw_result
-from color_tuning import apply_color_tuning
-from sensor_distance_v3 import SideSensorsV3, FRONT_BARRIER_ROW
 from pid_line_follower import LineFollowerPID
+from servo_controller import ServoController
+from robot_io import (CornerTriggers, HeadingWallFollower, SensorAdapter,
+                      button_pressed, set_pin, sleep_with_abort, valid_tof,
+                      wait_for_button_press)
+# The dual-camera pillar PID, IMPORTED not copied -- pillar_pid_dualcam.py is
+# the one place the strip geometry and the steering sign live, and it carries
+# the --selftest that proves them.
+from unwedge import StuckDetector, reverse_nudge
+from pillar_pid_dualcam import (PillarPID, Strip, choose as choose_pillar,
+                                detect as detect_pillars, placed as pillar_placed)
 
 
 # =========================================================
-# LOGGING
-# =========================================================
-# main.py runs unattended as a systemd service at competition startup (see
-# service/wro-main.service), so every lifecycle event must land in a file we can
-# read after the run -- the judges' table has no console. setup_logging() wires a
-# rotating file (logs/main.log, 5 MB x 5) AND stdout, so the same messages show
-# live when run by hand and persist on disk under systemd. The high-frequency
-# per-frame telemetry ([WATCH] / [FRONT 4x4]) is emitted at DEBUG so it does not
-# flood INFO logs; set WRO_LOG_LEVEL=DEBUG (or LOG_LEVEL constant) to see it.
-
-LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-LOG_FILE = os.path.join(LOG_DIR, "main.log")
-LOG_LEVEL = os.environ.get("WRO_LOG_LEVEL", "INFO").upper()
-LOG_MAX_BYTES = 5 * 1024 * 1024     # 5 MB per file before rotating
-LOG_BACKUPS = 5                     # keep 5 rotated backups (~25 MB total)
-
-logger = logging.getLogger("wro.main")
-
-
-def setup_logging(level: str = LOG_LEVEL) -> logging.Logger:
-    """Configure logging to BOTH a rotating file (logs/main.log) and stdout.
-
-    Idempotent (safe to call once at startup): clears any existing handlers so a
-    re-run under systemd Restart= does not duplicate lines. stdout is line-/
-    stream-flushed and PYTHONUNBUFFERED=1 is set in the unit file, so log lines
-    appear promptly in `journalctl` instead of being held in a pipe buffer.
-    """
-    os.makedirs(LOG_DIR, exist_ok=True)
-
-    numeric_level = getattr(logging, level, logging.INFO)
-    root = logging.getLogger()
-    root.setLevel(numeric_level)
-    for handler in list(root.handlers):   # avoid duplicate handlers on re-init
-        root.removeHandler(handler)
-
-    fmt = logging.Formatter(
-        "%(asctime)s %(levelname)-7s [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-    file_handler = RotatingFileHandler(
-        LOG_FILE, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUPS)
-    file_handler.setFormatter(fmt)
-    file_handler.setLevel(numeric_level)
-    root.addHandler(file_handler)
-
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(fmt)
-    console_handler.setLevel(numeric_level)
-    root.addHandler(console_handler)
-
-    return logger
-
-
-class SensorAdapter(SideSensorsV3):
-    """New-firmware reader (SideSensorsV3) with v2's snapshot keys layered on top.
-
-    v2's code expects right_mm / left_mm / valid and the front_* keys. The new
-    reader exposes right_front_mm / right_rear_mm / left_mm and the VL53L8CX
-    matrix front_*. We follow the RIGHT_FRONT wall, so right_mm == right_front.
-    """
-
-    def snapshot(self) -> dict:
-        """Return the new-firmware sensor snapshot with v2's legacy keys layered on.
-
-        Adds right_mm (== RIGHT_FRONT, the wall we follow), a combined valid flag,
-        and age/timestamp aliases so the v2 main loop keeps working unchanged.
-        """
-        s = super().snapshot()
-        s["right_mm"] = s["right_front_mm"]
-        s["valid"] = s["left_valid"] and s["right_front_valid"]
-        s["age_s"] = s["lr_age_s"]
-        s["last_lr_time"] = s["lr_last_time"]
-        return s
-
-
-class HeadingWallFollower:
-    """Two-right-sensor wall follower: hold a gap to the right wall AND keep the
-    car PARALLEL. Distance-only steering overshoots wall-to-wall because it is
-    blind to the car's angle; adding the RF-RR heading term damps that.
-
-    Steering convention matches LineFollowerPID(side_sign=+1): positive u steers
-    TOWARD the right wall. Too far (gap>target) -> +u; nose pointed AWAY from the
-    wall (RF>RR) -> +u. Both push the car back to parallel at the target gap.
-
-    RF/RR are median-filtered (RR spikes low now and then), and an out-of-band
-    RF-RR is treated as a spike -> heading drops to 0 for that frame.
-    """
-
-    def __init__(self, target, rr_offset, kh, kd, out_limit, deadband,
-                 heading_max, max_valid_mm=2000.0, median_window=3):
-        """Configure the follower.
-
-        target       desired gap to the right wall (mm).
-        rr_offset    added to RR so RF == RR+offset means PARALLEL (calibration).
-        kh, kd       heading and gap gains (us per mm).
-        out_limit    max |u| output (us).
-        deadband     gap error below this is treated as zero (anti-jitter, mm).
-        heading_max  |RF-RR| above this = sensor spike -> ignore the angle (mm).
-        max_valid_mm readings outside (0, this] are rejected.
-        median_window per-side median filter length (spike rejection).
-        """
-        self.target = target
-        self.rr_offset = rr_offset
-        self.kh = kh
-        self.kd = kd
-        self.out_limit = out_limit
-        self.deadband = deadband
-        self.heading_max = heading_max
-        self.max_valid_mm = max_valid_mm
-        self.window = max(1, int(median_window))
-        self.reset()
-
-    def reset(self):
-        """Clear the median histories and last output. Call at start and after
-        each turn so the follower begins fresh on the new wall."""
-        self._rf_hist = deque(maxlen=self.window)
-        self._rr_hist = deque(maxlen=self.window)
-        self.last_u = 0.0
-
-    def _valid(self, v):
-        """True if v is a usable distance reading (not None, in (0, max_valid_mm])."""
-        return v is not None and 0 < v <= self.max_valid_mm
-
-    @staticmethod
-    def _clamp(x, lo, hi):
-        """Clamp x to the inclusive range [lo, hi]."""
-        return max(lo, min(hi, x))
-
-    def update(self, rf, rr):
-        """Returns (u, info). info['valid'] False -> RF unusable, hold center."""
-        if not self._valid(rf):
-            return self.last_u, {"valid": False}
-
-        self._rf_hist.append(float(rf))
-        rf_f = statistics.median(self._rf_hist)
-
-        if self._valid(rr):
-            self._rr_hist.append(float(rr))
-        rr_f = statistics.median(self._rr_hist) if self._rr_hist else None
-
-        if rr_f is not None:
-            rr_aligned = rr_f + self.rr_offset
-            heading = rf_f - rr_aligned          # >0 nose AWAY from the wall
-            if abs(heading) > self.heading_max:  # RR spike -> ignore the angle
-                heading = 0.0
-                dist = rf_f
-            else:
-                dist = 0.5 * (rf_f + rr_aligned)
-        else:
-            heading = 0.0
-            dist = rf_f
-
-        gap_err = dist - self.target
-        if abs(gap_err) < self.deadband:
-            gap_err = 0.0
-
-        u = self.kh * heading + self.kd * gap_err
-        u = self._clamp(u, -self.out_limit, self.out_limit)
-        self.last_u = u
-        return u, {"valid": True, "heading": heading, "dist": dist,
-                   "rf": rf_f, "u": u}
-
-
-# =========================================================
-# HARDWARE / PORT CONFIGURATION
+# HARDWARE / PORTS
 # =========================================================
 
 MOTOR_PORT = "/dev/ttyUSB0"
-SENSOR_PORT = "/dev/ttyUSB0"     # same STM32 as the motor -> shared serial
+SENSOR_PORT = "/dev/ttyUSB0"     # same STM32 -> shared serial, sensor owns reads
 SERVO_PORT = "/dev/ttyACM0"
 SERVO_BAUD = 9600
-BUTTON_PIN = 7
+# The button pin lives with set_pin()/button_pressed() in robot_io, which is
+# the only place that reads it. Nothing here to edit.
+
+DRY_RUN = False
+
+# Shutdown only. The motor runs in forward_continuous, so a lost STOP frame
+# means the car keeps going after the program exits -- see the finally block.
+MOTOR_STOP_TRIES = 5
+MOTOR_STOP_TIMEOUT_S = 0.4                  # True = never command the motor (bench testing)
+
+# =========================================================
+# MODELS -- only two now
+# =========================================================
+
+MODELS_DIR = "/home/daniel/WRO2026-MetallicMadness/Models"
+CORNER_MODEL = f"{MODELS_DIR}/Best_Model_Corner_v3.pt"   # corner-TYPE classifier
+WALL_MODEL = f"{MODELS_DIR}/Walls_model_v3.pt"
+# Loaded ONLY when behavior_manager.PILLAR_PID_ENABLED. A detector on two full
+# 1280x720 frames is far heavier than the two 224px classifiers, so challenge 1
+# -- which has no pillars -- should not pay for it.
+PILLAR_MODEL = f"{MODELS_DIR}/Pillar_model_v1.pt"
+
+PANE = B.PANE
+CAM_IDS = B.CAM_IDS
+CLASS_BACKS_TRIGGER_FRAMES = B.CLASS_BACKS_TRIGGER_FRAMES
+CORNER_EVERY = B.CORNER_EVERY
+WALL_EVERY = B.WALL_EVERY
+TURN_WALL_HZ = B.TURN_WALL_HZ
+
+CRUISE_SPEED_PCT = B.CRUISE_SPEED_PCT
+FINISH_DRIVE_S = B.FINISH_DRIVE_S
+
+WALL_FOLLOW_MODE = B.WALL_FOLLOW_MODE
+WALL_TARGET_MM = B.WALL_TARGET_MM
+WF_KH, WF_KD = B.WF_KH, B.WF_KD
+WF_RR_OFFSET_MM = B.WF_RR_OFFSET_MM
+WF_OUT_LIMIT = B.WF_OUT_LIMIT
+WF_DEADBAND = B.WF_DEADBAND
+WF_HEADING_MAX_MM = B.WF_HEADING_MAX_MM
+
+PID_KP, PID_KI, PID_KD = B.PID_KP, B.PID_KI, B.PID_KD
+PID_OUT_LIMIT = B.PID_OUT_LIMIT
+PID_DEADBAND = B.PID_DEADBAND
+PID_MEDIAN_WINDOW = B.PID_MEDIAN_WINDOW
+PID_SLEW_LIMIT = B.PID_SLEW_LIMIT
+PID_KH = B.PID_KH
+
+SIDE_MAX_AGE_S = B.SIDE_MAX_AGE_S
+LR_HZ = B.LR_HZ
+FRONT_HZ = B.FRONT_HZ
+DEBUG_HZ = B.DEBUG_HZ
 
 
 # =========================================================
-# CHALLENGE / TRACK CONFIGURATION
+# PERCEPTION -- two classifiers, one composite
 # =========================================================
 
-NUM_LAPS = 3
-CORNERS_PER_LAP = 4
-TOTAL_CORNERS = NUM_LAPS * CORNERS_PER_LAP
+class Perception:
+    """Runs the corner-type and wall classifiers and returns one Percept."""
 
-DRIVE_DIRECTION = "CW"           # DEPRECATED for direction: WRO forbids a preset --
-                                 # the car must auto-detect. Only used by
-                                 # default_direction() when AUTO_LOCK_DIRECTION is
-                                 # False (a non-competition debug mode). Keep
-                                 # AUTO_LOCK_DIRECTION = True for real runs.
-# Lock the track turn direction from the FIRST corner's CAMERA detection, then
-# reuse it for ALL corners and to choose the outer wall. WRO requires auto-detect,
-# so corner-1 direction comes ONLY from the camera vote (camera_dir_vote); the car
-# WAITS for that vote rather than guessing. Keep this True for competition.
-AUTO_LOCK_DIRECTION = True
+    def __init__(self):
+        from ultralytics import YOLO
+        print(f"Loading corner classifier {CORNER_MODEL} ...")
+        self.corner = YOLO(CORNER_MODEL)
+        print(f"Loading wall classifier {WALL_MODEL} ...")
+        self.wall = YOLO(WALL_MODEL)
+        self.corner.to("cuda")
+        self.wall.to("cuda")
+        self.pillar = None
+        self.pillar_pid = None
+        self.strip = None
+        if B.PILLAR_PID_ENABLED:
+            print(f"Loading pillar detector {PILLAR_MODEL} ...")
+            self.pillar = YOLO(PILLAR_MODEL)
+            self.pillar.to("cuda")
+            self.pillar_pid = PillarPID()
+            self.strip = Strip(frame_w=CAM_WIDTH,
+                               per_cam=B.PILLAR_PID_SECTIONS)
+        self._last_pillar = None
+        self.cam_params = {sid: load_params(sensor_id=sid) for sid in CAM_IDS}
+        self._frame = 0
+        self._last = {"corner": (None, 0.0), "wall": (None, 0.0)}
+        self.frames_since_turn_class = 10**6   # see CLASS_BACKS_TRIGGER
+        self._warned = False
 
-MOTOR_SPEED_PCT = 70             # STM32 global_motor_speed (0-100), set on init
+    def announce_pillars(self):
+        """Say whether the pillar half of the controller is live."""
+        if not B.PILLAR_PID_ENABLED:
+            print("[v7] pillar PID OFF -- detector not loaded, no cost. "
+                  "behavior_manager.PILLAR_PID_ENABLED turns it on.")
+            return
+        tgt = B.PILLAR_PID_TARGET_SECTION
+        print(f"[v7] pillar PID ON  -- {PILLAR_MODEL}")
+        print(f"       strip {self.strip.n_sections} sections across "
+              f"{self.strip.width}px, every {B.PILLAR_EVERY} frame(s)")
+        print(f"       targets: green -> section {tgt['green']}, "
+              f"red -> section {tgt['red']}")
 
-TURN_STEER_US = 250
-STEER_LEFT_US = -TURN_STEER_US
-STEER_RIGHT_US = +TURN_STEER_US
-TURN_TIME_S = 3.5
+    def announce_tuning(self):
+        """State what the models are actually being fed. Once, at startup."""
+        if not B.CAMERA_TUNING:
+            print("[v7] camera colour tuning OFF -- models see raw frames, "
+                  "which is what they were trained on")
+            return
+        print(f"[v7] camera colour tuning ON, stage={B.CAMERA_TUNING_STAGE!r}")
+        for sid in CAM_IDS:
+            print(f"       cam{sid}: {self.cam_params[sid]}")
+        print("[v7] WARNING: collect_corner_classes.py and "
+              "collect_steering_classes.py save UNTUNED frames,")
+        print("     so these weights never saw a colour-corrected image. "
+              "Expect the classifiers to get")
+        print("     WORSE, not better, until the collectors tune too and "
+              "the models are retrained.")
 
-REQUIRE_BOTH_LINES = True
-TRIGGER_CLOSENESS = 0.60
-CONFIRM_FRAMES = 2
-CORNER_COOLDOWN_S = 0.4          # blind straight after a turn. Scale DOWN with
-                                 # speed: at 90% a 0.8s blind window ate the far
-                                 # part of the straight, so the front barrier was
-                                 # only ~820mm away when detection resumed -> the
-                                 # turn fired too close and ran wide. 0.4s lets the
-                                 # front be seen farther out, so it turns earlier.
-FINISH_STRAIGHT_S = 1.0
+    def check_classes(self):
+        """Warn once if a model's classes are not the ones we expect."""
+        want_corner = set(B.CORNER_TURN_PROFILE) | {"straight"}
+        got = set(getattr(self.corner, "names", {}).values())
+        if got and not got <= want_corner:
+            print(f"\nWARNING: corner model classes {sorted(got)}\n"
+                  f"         are not all in {sorted(want_corner)} -- an unknown "
+                  "class can never pick a turn profile.\n")
+        got_w = set(getattr(self.wall, "names", {}).values())
+        if got_w and got_w != set(B.WALL_STEER_US):
+            print(f"\nWARNING: wall model classes {sorted(got_w)}\n"
+                  f"         differ from {sorted(B.WALL_STEER_US)}.\n")
 
-# Post-turn LEAD steer. After each turn, instead of coasting straight through the
-# cooldown, hold a fixed steering "lean" so the car deliberately approaches one
-# wall. Leaning toward the OUTER wall makes its distance collapse cleanly at the
-# next corner, so the sensor trigger fires reliably (this is what rescues corner-2
-# detection at high speed). LEAD_STEER_US is the lean magnitude (us); 0 = off
-# (old straight behavior). LEAD_TOWARD = "outer" (toward followed wall) or "inner".
-LEAD_AFTER_CORNER = True
-LEAD_STEER_US = 80
-LEAD_TOWARD = "outer"
+    def composite(self, frames):
+        """The layout BOTH classifiers were trained on: cam0 | cam1, 960x270.
 
-# After the track direction is locked (first corner), let the camera confirm a
-# corner from a SINGLE close line instead of requiring both colors.
-# DISABLED: it fired a fake corner -- right after a turn, the just-passed corner's
-# single line (orange, close=1.00) re-triggered an extra corner. The sensor
-# fallback already catches camera-missed corners, so we keep the camera strict.
-RELAX_BOTH_LINES_AFTER_LOCK = False
+        Colour tuning is applied here, or not at all -- see
+        behavior_manager.CAMERA_TUNING. Each camera gets its OWN parameters even
+        in "resized" mode, because the composite spans both and one camera's
+        gains are wrong for the other's half.
+        """
+        tune = B.CAMERA_TUNING
+        full = tune and B.CAMERA_TUNING_STAGE == "full"
 
-# Sensor-based corner fallback. When the FOLLOWED outer wall distance collapses,
-# the car has physically reached the corner (the outer wall wraps in front of
-# the side sensor). If the camera missed the corner, this turns anyway so the
-# car never drives into the wall. Active only after the direction is locked and
-# only in "outer" wall-follow mode.
-#
-# Fire EARLY (high threshold) so there is room to turn before reaching the wall.
-# To stop the post-turn recovery dip (~237-260 mm observed) from false-firing the
-# next corner, the trigger RE-ARMS only after the outer wall has receded past
-# SENSOR_REARM_MM since the last corner. So the sequence each straight is:
-# corner -> recovery (disarmed) -> wall recedes past re-arm (armed) -> next
-# corner's collapse fires.
-ENABLE_SENSOR_CORNER = True
-SENSOR_CORNER_MM = 250.0         # followed-wall distance below this = at corner
-SENSOR_CORNER_FRAMES = 3         # consecutive samples below threshold to fire
-SENSOR_REARM_MM = 330.0          # wall must recede past this to re-arm the trigger
+        panes = []
+        for sid in CAM_IDS:
+            frame = frames.get(sid)
+            if frame is None:
+                continue
+            if full:
+                frame = apply_color_tuning(frame, self.cam_params[sid])
+            pane = cv2.resize(frame, PANE)
+            if tune and not full:
+                pane = apply_color_tuning(pane, self.cam_params[sid])
+            panes.append(pane)
+        if not panes:
+            return None
+        return panes[0] if len(panes) == 1 else cv2.hconcat(panes)
 
-# Front-barrier corner trigger -- now the VL53L8CX 4x4 matrix (command 0x0003).
-# sensor_distance_v3.front_scalars() reduces row 1 of the matrix to front_mm.
-# IMPORTANT difference from the old single-zone sensor: the barrier only enters
-# row 1 at ~95 cm; farther than that the whole row reads >2500 -> front INVALID.
-# So "clear road ahead" == front INVALID, NOT a large number. The arm/fire logic
-# is therefore matrix-aware:
-#   ARM  while the barrier is far/absent (front INVALID, or valid >= FRONT_ARM_MM)
-#   FIRE when it closes into [FRONT_MIN_TRUST_MM, FRONT_CORNER_MM]
-# Below ~50 cm row 1 collapses to ~285 mm (flaky), so MIN_TRUST rejects it and we
-# fire BEFORE then. Measured sweep fired cleanly at the first solid detection
-# (~954 mm). Only active after the direction is locked (corner 1 stays camera).
-ENABLE_FRONT_CORNER = True
-FRONT_ARM_MM = 1000.0            # valid >= this (or barrier ABSENT) -> armed
-FRONT_CORNER_MM = 900.0          # fire when the wall closes to <= this. Set with the
-                                 # TILTED front sensor: the tilt changes where the
-                                 # wall lands in row 1, so the fire distance is
-                                 # re-tuned to 900 (ARM 1000 stays just above the
-                                 # fire window). Re-check the front= value at each
-                                 # corner after the tilt and nudge these if needed.
+    @staticmethod
+    def _top1(model, image):
+        r = model(image, verbose=False)[0]
+        if r.probs is None:
+            return None, 0.0
+        i = int(r.probs.top1)
+        return r.names[i], float(r.probs.top1conf)
 
-FRONT_MIN_TRUST_MM = 330.0       # ignore row-1 below this (floor / sub-50cm flake).
-                                 # LOWERED 450->330: the corner OUTER WALL (vs the
-                                 # tuned barrier obstacle) only enters row 1 at
-                                 # ~360-430 mm -- it jumps 2300 -> ~380 with nothing
-                                 # in the old [450,1000] window, so the front trigger
-                                 # NEVER fired on corners. 330 catches the ~360+ wall
-                                 # while still rejecting the ~285 mm floor flake.
-FRONT_CORNER_FRAMES = 2          # fresh front frames in-window to fire. RAISED
-                                 # 1->2: at 1, a single transient frame right after a
-                                 # turn fired a FALSE corner (zone-2 corner 3 -> inner
-                                 # wall). 2 needs two in-window frames, rejecting the
-                                 # one-frame mis-aimed-exit catch.
-FRONT_MIN_CELLS = 2              # row-1 cells in the barrier band required to FIRE.
-                                 # A lone in-band cell among OPEN cells is an edge/
-                                 # wall-corner catch, not the barrier face -> firing
-                                 # on it turns too soon (seen at the lap-2 corner).
-# Crash failsafe: if the barrier gets this close and we somehow have NOT turned
-# (window skipped by noise, or never armed), turn NOW regardless -- better an
-# early/extra turn than driving into the wall (seen: front ran 1085->...->3 mm).
-FRONT_EMERGENCY_MM = 380.0
-FRONT_EMERGENCY_FRAMES = 2
+    def pillar_update(self, frames, percept, force=False):
+        """Run the pillar detector and let the dual-cam PID decide the steering.
 
-# Poll the front 4x4 matrix BEFORE the direction locks too. Originally the matrix
-# was off until corner 1 locked (to protect the motor start frame on the shared
-# bus); but that left corner 1 with the camera as its ONLY trigger, so a bad
-# start zone drove into the wall. We still keep it off through the motor-start
-# pulses, then enable it just before the main loop so corner 1 gets the early
-# front trigger (the camera fires late -> the zone-2 wall hit).
-FRONT_ENABLE_FROM_START = True
+        Fills the Percept fields the state machine already gates on -- colour,
+        area, centre -- plus what the PID adds: the steering it wants and
+        whether the pillar has been placed. When disabled, or on a frame the
+        cadence skips, the LAST result is reused rather than cleared: dropping
+        to "no pillar" every other frame would break the consecutive-frame
+        agreement PILLAR_ACTIONABLE_FRAMES needs.
+        """
+        if self.pillar is None:
+            return None
+        # force=True is hold_turn: self._frame only advances in update(), which
+        # is not running during a turn, so the cadence check would freeze on
+        # whatever it last evaluated to and hand back a stale pillar forever.
+        if force or self._frame % B.PILLAR_EVERY == 0 or self._last_pillar is None:
+            found = detect_pillars(self.pillar, frames, self.strip,
+                                   B.PILLAR_PID_MIN_CONF)
+            chosen = choose_pillar(found)
+            steer, _info = self.pillar_pid.update(self.strip, chosen)
+            self._last_pillar = (chosen, steer,
+                                 bool(chosen and pillar_placed(self.strip,
+                                                               chosen, found)))
+        chosen, steer, done = self._last_pillar
+        if chosen is None:
+            percept.pillar_color = None
+            percept.pillar_area = 0.0
+            percept.pillar_cx = None
+            percept.pillar_steer_us = 0.0
+            percept.pillar_placed = False
+            return None
+        percept.pillar_color = chosen.colour
+        percept.pillar_area = chosen.area
+        percept.pillar_cx = 0.5 * (chosen.box[0] + chosen.box[2])
+        percept.frame_w = CAM_WIDTH
+        percept.pillar_steer_us = steer
+        percept.pillar_placed = done
+        return chosen
 
-# Pre-lock corner detection (corner 1, before the direction is locked). The
-# original code had NO camera-independent fallback here, so a bad start zone
-# (camera misses one/both colored lines) drove straight into the corner wall
-# (seen in zones 1 and 3). We add a geometry trigger that ALSO infers the turn
-# direction, since the camera normally supplies it:
-#   * front wall/barrier ahead (same window as the post-lock front trigger), OR
-#   * RIGHT nose-in: RF collapses while RR stays back (the outer wall has wrapped
-#     in front of the right side). RF ~= RR means merely STARTING near the right
-#     wall (zone 3), NOT a corner -- the RR-RF gap is what tells them apart.
-# Direction = turn toward the MORE-OPEN side: the side reading farther (or the
-# side that reads INVALID = out of range = the open corner gap) is the inside.
-ENABLE_PRELOCK_CORNER = True
-PRELOCK_NOSEIN_MM = 250.0        # RF below this (with the gap) = right wall ahead
-PRELOCK_NOSEIN_GAP_MM = 150.0    # RR-RF gap required: corner, not parallel-near-wall
-PRELOCK_RF_HARD_MM = 130.0       # RF below this fires regardless of the RR-RF gap.
-                                 # When the car reaches the corner PARALLEL (hugging
-                                 # the outer wall, zone 3), RF and RR collapse
-                                 # TOGETHER (gap ~30-60 mm), so the nose-in gap never
-                                 # triggers -- but RF still drops to ~20-60 mm. A
-                                 # plain low-RF floor catches that. Start zones read
-                                 # RF >= ~150, so 130 won't false-fire at the start.
-PRELOCK_CORNER_FRAMES = 2        # consecutive frames to fire (rejects 1-frame noise)
+    def wall_only(self, frames):
+        """(class, conf) from the WALL model alone -- for use during a turn.
 
-# First-corner DIRECTION resolution. WRO requires the car to AUTO-DETECT the track
-# direction at runtime -- NO preset/operator input. turn_models derives the turn
-# from the NEAREST line's color (blue->left, orange->right). A lone FAR line is
-# unreliable (it reads as "nearest" and inverts), so a vote is only counted from a
-# BOTH-lines frame OR a CLOSE lone line (the near line, reliable -- CAM_DIR_LONE_CLOSE).
-# Corner-1 direction = the confident camera vote (camera_dir_vote). If a non-camera
-# trigger fires before the vote lands, the car WAITS (keeps approaching) rather than
-# guessing; only an emergency (wall about to be hit) forces a sensor-only last
-# resort (emergency_dir). Subsequent corners reuse the locked direction.
-CAM_DIR_MIN_VOTES = 1            # both-lines frames required before the vote counts.
-                                 # LOWERED 3->1: corner 1 only yields ~1 both-frame
-                                 # before the front trigger fires, so 3 was never
-                                 # reached and the preset always decided (CW turned
-                                 # LEFT despite the camera seeing the right corner).
-                                 # both-frames are the reliable kind, so 1 is enough
-                                 # to let the camera auto-pick direction; raise back
-                                 # toward 2-3 if a wrong auto-lock is ever seen.
-CAM_DIR_CONFIDENCE = 0.6         # winning side must be >= this fraction of votes
-CAM_DIR_LONE_CLOSE = 0.62        # a SINGLE line this close (or closer) counts as a
-                                 # vote: high closeness = it's the NEAR line, so its
-                                 # color is reliable. Boosts the vote rate (esp. for
-                                 # RIGHT corners where both-line frames are rare) so
-                                 # the camera can auto-decide direction in time.
+        The corner classifier is skipped: the turn type is already committed and
+        re-running it mid-turn would only slow the loop that is watching for the
+        car to come parallel.
+        """
+        sample = self.composite(frames)
+        if sample is None:
+            return None, 0.0
+        return self._top1(self.wall, sample)
 
-SHOW_VIEW = False
-DEBUG_PRINT_HZ = 5.0
-DEBUG_FRONT_MATRIX = True         # dump the raw 4x4 matrix in [WATCH] for tuning
+    def update(self, frames, percept):
+        """Fill in the model fields. Returns the composite for the debug view."""
+        self._frame += 1
+        sample = self.composite(frames)
+        if sample is None:
+            return None
 
+        if self._frame % CORNER_EVERY == 0:
+            self._last["corner"] = self._top1(self.corner, sample)
+        if self._frame % WALL_EVERY == 0:
+            self._last["wall"] = self._top1(self.wall, sample)
 
-# =========================================================
-# PID WALL-FOLLOWING CONFIGURATION
-# =========================================================
+        name, conf = self._last["corner"]
+        # 'straight' is a real answer meaning "no corner here" -- pass it through
+        # as no class rather than as a turn the profile table cannot serve.
+        percept.corner_class = name if name in B.CORNER_TURN_PROFILE else None
+        percept.corner_class_conf = conf if percept.corner_class else 0.0
+        if percept.corner_class:
+            self.frames_since_turn_class = 0
+        else:
+            self.frames_since_turn_class += 1
 
-ENABLE_PID = True                # False -> behaves like v1 (center steering)
-# On the FIRST sector (before corner 1) the car is hand-placed straight and
-# aligned, so there is nothing to correct -- and the sensors may still be settling
-# right after start. Hold dead-center on that first straight and let the PID take
-# over only AFTER corner 1, where the exit angle actually needs cleaning up.
-PID_SKIP_FIRST_SECTOR = True     # hold dead-center on the first straight (PID off).
-                                 # NOTE: this does NOT fix off-center start zones --
-                                 # the real corner-1 problem is detection, not
-                                 # steering (see pre-lock fallback work).
-LR_HZ = 20.0                     # side-sensor poll rate (0x0105, all 3 sides)
-FRONT_HZ = 10.0                  # VL53L8CX 4x4 matrix poll rate (0x0003)
-
-# Wall-following mode:
-#   "outer"  -> follow ONLY the outer wall at WALL_TARGET_MM (robust: the inner
-#               wall is discontinuous at corners and corrupts difference mode).
-#   "center" -> classic difference (R-L); keeps the car in the MIDDLE using both
-#               walls. The corner fallback still watches the outer wall, so a
-#               missing inner wall at a corner is handled by the sensor trigger.
-#               If the car wanders where the inner wall has mid-straight gaps,
-#               switch back to "outer".
-WALL_FOLLOW_MODE = "outer"
-# Distance to hold from the outer wall. Calibrate: center the car in a straight,
-# read sensor_distance.py, use the OUTER-side value (your static test ~470).
-WALL_TARGET_MM = 470.0
-
-# PID gains (steering microseconds per mm of L/R difference).
-# KP raised for real centering authority; KD damps the steering->position
-# double-integrator (safe now that the median filter cleans the input).
-PID_KP = 0.70
-PID_KI = 0.00                    # add ~0.10 only if a steady lean remains
-PID_KD = 0.15
-PID_OUT_LIMIT = 150.0            # max centering steer (keep < TURN_STEER_US)
-PID_CENTER_OFFSET = 12.0         # center mode: (R-L) at true center. Static test
-                                 # read LEFT 456 / RIGHT 468 -> offset = 468-456.
-PID_STEER_SIGN = 1               # flip to -1 if corrections go the wrong way
-PID_DEADBAND = 8.0               # mm; ignore tiny errors to avoid jitter
-PID_MEDIAN_WINDOW = 3            # median filter length per side (rejects spikes)
-PID_SLEW_LIMIT = 100.0           # max steering change per update (us); 0 = off
-
-# Two-right-sensor HEADING wall-follower (the lane-keeping fix). The distance-only
-# PID is blind to the car's ANGLE, so it exits turns angled, over-corrects, and
-# overshoots WALL-TO-WALL (the lap-3 wedge: RF=89 one corner, L=17 the next). The
-# RF-RR heading term holds the car PARALLEL, killing the overshoot. Only works
-# when the OUTER wall is on the RIGHT (CCW / left turns -- which this track is);
-# for the other direction it falls back to the distance-only PID automatically.
-# Set ENABLE_HEADING = False to revert exactly to the previous behavior.
-ENABLE_HEADING = True
-WF_KH = 1.2                      # heading gain (us per mm of RF-RR). Raise for a
-                                 # stiffer parallel hold; lower if it oscillates.
-WF_KD = 0.6                      # gap gain (us per mm of distance error)
-WF_RR_OFFSET_MM = 0.0            # add to RR so RF==RR+offset means PARALLEL.
-                                 # Calibrate: park the car parallel to the wall,
-                                 # read RF-RR, set this = that value. If the car
-                                 # holds a steady angle, tune this first.
-WF_OUT_LIMIT = 150.0             # shared steering limit (us; keep < TURN_STEER_US)
-WF_DEADBAND = 8.0                # mm; gap deadband
-WF_HEADING_MAX_MM = 200.0        # |RF-RR| above this = RR spike -> ignore heading
-
-CAMERA_PIPELINE = (
-    "nvarguscamerasrc sensor-id=0 ! "
-    "video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1, format=NV12, colorimetry=bt601 ! "
-    "nvvidconv ! "
-    "video/x-raw, width=1280, height=720, format=BGRx ! "
-    "videoconvert ! "
-    "video/x-raw, format=BGR ! "
-    "appsink drop=true max-buffers=1 sync=false"
-)
-
-
-# =========================================================
-# BUTTON HELPERS
-# =========================================================
-
-def set_pin():
-    """Initialize the start/abort push button on BUTTON_PIN as a GPIO input."""
-    GPIO.setwarnings(False)
-    GPIO.cleanup()
-    GPIO.setmode(GPIO.BOARD)
-    GPIO.setup(BUTTON_PIN, GPIO.IN)
-    logger.info("Button input pin: %s", GPIO.input(BUTTON_PIN))
-    time.sleep(1)
-
-
-def button_pressed() -> bool:
-    """True while the button is held down (pin reads HIGH)."""
-    return GPIO.input(BUTTON_PIN) == GPIO.HIGH
-
-
-def wait_for_release():
-    """Block until the button is released, then debounce briefly."""
-    while button_pressed():
-        time.sleep(0.02)
-    time.sleep(0.05)
-
-
-def wait_for_button_press():
-    """Block until a clean press: wait for release, then a press, then release.
-    Used to gate the start so a held button can't immediately retrigger."""
-    while button_pressed():
-        time.sleep(0.02)
-    while not button_pressed():
-        time.sleep(0.02)
-    time.sleep(0.05)
-    wait_for_release()
-
-
-def sleep_with_abort(duration_s: float) -> bool:
-    """Sleep up to duration_s, but return True early if the button is pressed
-    (an abort request). Returns False if the full duration elapsed. Used for the
-    blind turn and finish straight so the button can always halt the car."""
-    deadline = time.monotonic() + duration_s
-    while time.monotonic() < deadline:
-        if button_pressed():
-            time.sleep(0.05)
-            return True
-        time.sleep(0.01)
-    return False
-
-
-# =========================================================
-# STEERING / DETECTION HELPERS
-# =========================================================
-
-def default_direction() -> str:
-    """Turn side implied by the DRIVE_DIRECTION constant (CCW->left, else right).
-    Debug/fallback only -- in competition direction is auto-detected, not preset."""
-    return "left" if DRIVE_DIRECTION.upper() == "CCW" else "right"
-
-
-def outer_for(track_dir):
-    """Outer-wall sensor side for a given track turn direction (None if unknown)."""
-    if track_dir == "left":
-        return "right"
-    if track_dir == "right":
-        return "left"
-    return None
-
-
-def steer_us_for(direction: str) -> int:
-    """Servo steering offset (us) for a turn in the given direction."""
-    return STEER_LEFT_US if direction == "left" else STEER_RIGHT_US
-
-
-def both_lines_present(result) -> bool:
-    """True if the detector saw BOTH a blue and an orange corner line this frame
-    (the high-confidence case for picking turn direction)."""
-    colors = {line["color"] for line in result["lines"]}
-    return "blue" in colors and "orange" in colors
-
-
-def corner_confirmed(result) -> bool:
-    """Strict camera corner test: a detected, close-enough corner with a turn side
-    and (if required) both lines. Helper for camera-based confirmation."""
-    if not result["detected"] or result["turn"] is None:
-        return False
-    if result["distance_norm"] is None or result["distance_norm"] < TRIGGER_CLOSENESS:
-        return False
-    if REQUIRE_BOTH_LINES and not both_lines_present(result):
-        return False
-    return True
+        percept.wall_class, percept.wall_conf = self._last["wall"]
+        return sample
 
 
 # =========================================================
@@ -568,656 +337,645 @@ def corner_confirmed(result) -> bool:
 # =========================================================
 
 def main():
-    """Run one full Open Challenge attempt: set up hardware, wait for the button,
-    then loop STRAIGHT (wall-follow + corner watch) and CORNER (timed turn +
-    follower recovery) until 12 corners (3 laps) are done, auto-detecting the
-    track direction at corner 1. Always stops the motor and cleans up on exit."""
-    logger.info("=== WRO 2026 Metallic Madness main.py starting ===")
-    logger.info("Competition waiting mode: initializing hardware, motors will "
-                "stay STOPPED until the Start button is pressed.")
     set_pin()
-    logger.info("Button pin ready (sensor init).")
+    print("Button pin ready.")
 
-    can_show = SHOW_VIEW and bool(os.environ.get("DISPLAY"))
-    if SHOW_VIEW and not can_show:
-        logger.warning("SHOW_VIEW requested but no $DISPLAY; running headless.")
-
-    logger.info("Initializing servo/steering controller on %s", SERVO_PORT)
     servo = ServoController(port=SERVO_PORT, baud_rate=SERVO_BAUD)
     servo.connect()
     servo.center_steering()
 
-    # ---- Side sensors own the serial; motor shares it if same port ----
-    sensors = None
-    if ENABLE_PID:
-        logger.info("Initializing side/front sensors on %s", SENSOR_PORT)
-        sensors = SensorAdapter(port=SENSOR_PORT, lr_hz=LR_HZ, front_hz=FRONT_HZ)
-        sensors.open()
-        # Keep the heavy VL53L8CX matrix poll OFF until corner 1 locks the
-        # direction (it is unused before then, and its scan can drop the motor
-        # start frame on the shared bus). Enabled right after the lock below.
-        sensors.set_front_enabled(False)
+    # Sweep the wheels once so you can see from the mat that the program is
+    # alive, without watching a console. Ends centred -- a car left on lock
+    # would drive its first metre sideways.
+    for u in (-200.0, 200.0, -200.0, 200.0):
+        servo.steer_delta(u, channel=0)
+        time.sleep(0.25)
+    servo.center_steering()
 
-    logger.info("Initializing motor/serial controller on %s", MOTOR_PORT)
+    # The sensor object OWNS /dev/ttyUSB0 and does the reading; the motor reuses
+    # that same serial and only WRITES, guarded by the sensor's lock. The two
+    # devices are one STM32 on one port -- exactly v4/v5's arrangement.
+    sensors = SensorAdapter(port=SENSOR_PORT, lr_hz=LR_HZ, front_hz=FRONT_HZ)
+    sensors.open()
+    sensors.set_front_enabled(False)      # heavy matrix poll off through start
+
     motor = MotorSerial(MOTOR_PORT, debug=False)
-    shared = ENABLE_PID and (SENSOR_PORT == MOTOR_PORT)
+    shared = SENSOR_PORT == MOTOR_PORT
     if shared:
-        motor.ser = sensors.ser          # reuse the sensor's serial object
+        motor.ser = sensors.ser
         motor_lock = sensors.write_lock
-        logger.info("Motor sharing the sensor serial link (%s)", MOTOR_PORT)
+        print("[v7] motor sharing the sensor serial link")
     else:
         motor.open()
         motor_lock = None
 
-    def motor_forward():
-        """Command continuous forward (write-only), holding the shared-bus lock if
-        the motor shares the sensor's serial port."""
+    perception = Perception()
+    perception.check_classes()
+    perception.announce_tuning()
+    perception.announce_pillars()
+
+    caps = {}
+    for sid in CAM_IDS:
+        cap = cv2.VideoCapture(camera_pipeline(sid), cv2.CAP_GSTREAMER)
+        if not cap.isOpened():
+            for c in caps.values():
+                c.release()
+            servo.close(); sensors.close(); GPIO.cleanup()
+            raise SystemExit(f"Could not open camera sensor-id={sid}. "
+                             "Try: sudo systemctl restart nvargus-daemon")
+        caps[sid] = cap
+
+    race = RaceManager()
+    behavior = BehaviorManager(cruise_speed=CRUISE_SPEED_PCT,
+                               turn_steer_us=B.TURN_STEER_US)
+    triggers = CornerTriggers()
+    pid = LineFollowerPID(kp=PID_KP, ki=PID_KI, kd=PID_KD,
+                          out_limit=PID_OUT_LIMIT, deadband=PID_DEADBAND,
+                          median_window=PID_MEDIAN_WINDOW,
+                          slew_limit=PID_SLEW_LIMIT,
+                          kh=PID_KH, rr_offset=WF_RR_OFFSET_MM,
+                          offset_ref_mm=B.WF_RR_OFFSET_REF_MM,
+                          heading_max=WF_HEADING_MAX_MM)
+    hwf = HeadingWallFollower(target=WALL_TARGET_MM, rr_offset=WF_RR_OFFSET_MM,
+                              kh=WF_KH, kd=WF_KD, out_limit=WF_OUT_LIMIT,
+                              deadband=WF_DEADBAND,
+                              heading_max=WF_HEADING_MAX_MM,
+                              median_window=PID_MEDIAN_WINDOW)
+
+    speed_now = 0
+
+    def _motor(fn, *a):
+        """All motor writes are fire-and-forget under the shared-bus lock."""
+        if DRY_RUN:
+            return
         if motor_lock:
             with motor_lock:
-                motor.forward_continuous(wait_response=False)
+                fn(*a, wait_response=False)
         else:
-            motor.forward_continuous(wait_response=False)
+            fn(*a, wait_response=False)
+
+    def motor_go(pct):
+        _motor(motor.set_speed, pct)
+        _motor(motor.forward_continuous)
 
     def motor_stop():
-        """Command motor stop (write-only), holding the shared-bus lock if shared."""
-        if motor_lock:
-            with motor_lock:
-                motor.stop(wait_response=False)
-        else:
-            motor.stop(wait_response=False)
+        _motor(motor.stop)
 
-    def motor_set_speed(percent):
-        """Set the STM32 global motor speed 0-100 (write-only), lock if shared."""
-        if motor_lock:
-            with motor_lock:
-                motor.set_speed(percent, wait_response=False)
-        else:
-            motor.set_speed(percent, wait_response=False)
+    def motor_back():
+        """Backwards at the emergency crawl -- THIS MOVE IS BLIND.
+
+        There is no rear sensor on this robot, so nothing can see what is
+        behind the car. Slow and brief is the entire safety argument; the
+        worst case is meant to be touching whatever it just came off. See
+        REVERSE_NUDGE_S.
+        """
+        _motor(motor.set_speed, B.REVERSE_SPEED_PCT)
+        _motor(motor.reverse_continuous)
 
     def motor_pulse(fn, times=4, gap=0.05):
-        """Send a fire-and-forget motor command a few times so it survives any
-        single dropped frame on the shared STM32 link. Used only at start/stop."""
+        """Repeat a start/stop command so one dropped frame cannot stall it."""
         for _ in range(times):
             fn()
             time.sleep(gap)
 
-    pid = LineFollowerPID(
-        kp=PID_KP, ki=PID_KI, kd=PID_KD,
-        out_limit=PID_OUT_LIMIT, center_offset=PID_CENTER_OFFSET,
-        steer_sign=PID_STEER_SIGN, deadband=PID_DEADBAND,
-        median_window=PID_MEDIAN_WINDOW, slew_limit=PID_SLEW_LIMIT,
-    )
+    def read_frames():
+        out = {}
+        for sid in CAM_IDS:
+            ok, f = caps[sid].read()
+            if ok and f is not None:
+                out[sid] = f
+        return out
 
-    hwf = HeadingWallFollower(
-        target=WALL_TARGET_MM, rr_offset=WF_RR_OFFSET_MM, kh=WF_KH, kd=WF_KD,
-        out_limit=WF_OUT_LIMIT, deadband=WF_DEADBAND,
-        heading_max=WF_HEADING_MAX_MM, median_window=PID_MEDIAN_WINDOW,
-    )
+    def turn_complete(snap) -> bool:
+        """Is the car PARALLEL to the wall yet? (heading, not position)
 
-    logger.info("Loading corner detector (camera/model init)...")
-    detector = CornerDetector()
-
-    logger.info("Opening camera pipeline (GStreamer/nvargus)...")
-    cap = cv2.VideoCapture(CAMERA_PIPELINE, cv2.CAP_GSTREAMER)
-    if not cap.isOpened():
-        logger.error("Could not open camera. Try: "
-                     "sudo systemctl restart nvargus-daemon")
-        servo.close()
-        if sensors:
-            sensors.close()
-        if not shared:
-            motor.close()
-        GPIO.cleanup()
-        raise SystemExit(1)
-    logger.info("Camera opened.")
-
-    def steer_straight(outer_side):
-        """Steer on the straight.
-
-        outer_side ("right"/"left") -> follow that single outer wall.
-        outer_side None (direction not locked yet) -> center on both walls.
-        Returns (debug_string, outer_dist) where outer_dist is the FILTERED
-        followed-wall distance in mm (or None if not in single-wall mode / the
-        reading was invalid). outer_dist feeds the sensor corner fallback.
+        The earlier version asked whether both side distances were inside a lane
+        band, which is a POSITION test -- and a car can finish a turn perfectly
+        parallel while still close to a wall. On the track that rejected every
+        real completion (exits at R=58/43/36) so every turn ran to its time
+        limit. RF and RR match only when the car is parallel, so their difference
+        is the heading signal. WF_RR_OFFSET_MM is what makes RF == RR + offset
+        mean parallel for this mounting; while it is 0.0 (uncalibrated)
+        TURN_CLOSED_LOOP stays False and this is never consulted.
         """
-        if not ENABLE_PID or sensors is None:
-            servo.center_steering()
-            return "center", None
+        rf = valid_tof(snap.get("right_front_mm"))
+        rr = valid_tof(snap.get("right_rear_mm"))
+        if rf is None or rr is None:
+            return None         # THREE-VALUED: True parallel / False measurably
+        off = WF_RR_OFFSET_MM or pid.rr_offset_estimate()
+        if not off:
+            return None         # no opinion yet -- the timer owns the turn
+        rng = max(1.0, 0.5 * (rf + rr))
+        if rng < B.TURN_DONE_MIN_RANGE_MM:
+            return None         # too close to measure heading -- see
+        if B.WF_RR_OFFSET_REF_MM > 0:
+            off = off * rng / B.WF_RR_OFFSET_REF_MM
+        limit = B.TURN_DONE_HEADING_MM * rng / B.TURN_DONE_HEADING_REF_MM
+        return abs(rf - (rr + off)) <= limit
 
-        # First sector: start position is known-straight -> hold center, no PID.
-        # (corners_done is read from the enclosing scope; it is 0 until corner 1.)
-        if PID_SKIP_FIRST_SECTOR and corners_done == 0:
-            servo.center_steering()
-            return "sector1: center (PID off)", None
+    def hold_turn(max_s, base_steer=None, turn_dir=None):
+        """Hold the steering lock for the turn. Returns (elapsed, reason, mean).
 
-        snap = sensors.snapshot()
+        (None, None, 1.0) if the button aborted. With TURN_CLOSED_LOOP off and
+        TURN_WALL_ASSIST off this is a plain timed turn -- the behaviour every
+        previous run was tuned against.
 
-        # Two-right-sensor heading follower -- ALWAYS follow the RIGHT wall once the
-        # direction is locked (parallel-hold only works where we have two sensors).
-        #   CCW: right wall = OUTER wall (target 470).
-        #   CW : right wall = INNER wall. The lane is ~symmetric (centered reads
-        #        L ~= RF ~= 480), so the SAME 470 target centers the car AND gives
-        #        the parallel-hold that distance-only PID on the left wall lacked
-        #        (CW wandered into the inner wall after ~10 corners without it).
-        if (ENABLE_HEADING and WALL_FOLLOW_MODE == "outer"
-                and outer_side is not None):
-            rf = snap["right_front_mm"]
-            rr = snap["right_rear_mm"]
-            u, info = hwf.update(rf, rr)
-            if info["valid"]:
-                servo.steer_delta(u, channel=0)
-                # outer_dist feeds the sensor corner fallback, which only makes
-                # sense when RIGHT is the OUTER wall (CCW). In CW the right wall is
-                # the INNER wall -- it dips below the sensor threshold mid-straight
-                # and would false-fire -- so hand back None and rely on the front.
-                od = info["rf"] if outer_side == "right" else None
-                return (f"RF={rf} RR={rr} hd={info['heading']:.0f} "
-                        f"dist={info['dist']:.0f} tgt={WALL_TARGET_MM:.0f} "
-                        f"u={u:.0f}", od)
-            servo.center_steering()
-            return f"RF={rf} INVALID->center", None
+        `mean` is the average of the wall-assist multiplier over the turn: 1.00
+        means the full profile lock was held throughout. The caller scales the
+        drawback by it, because a turn that was eased accumulated less rotation
+        and so has less to cancel.
+        """
+        start = time.monotonic()
+        aligned = 0
+        scale, scale_sum, scale_n = 1.0, 0.0, 0
+        next_wall = 0.0
+        why_wall = ""
+        assist = (B.TURN_WALL_ASSIST and base_steer is not None
+                  and turn_dir in ("left", "right") and TURN_WALL_HZ > 0)
+        # The pillar rides along on the same camera read (see
+        # TURN_PILLAR_ASSIST). bias is held between its slower ticks.
+        pillar_on = (B.TURN_PILLAR_ASSIST and B.PILLAR_PID_ENABLED
+                     and perception.pillar is not None and base_steer is not None)
+        bias, tick, pillar_note = 0.0, 0, ""
+        last_cmd = base_steer if base_steer is not None else 0.0
 
-        if WALL_FOLLOW_MODE == "outer" and outer_side is not None:
-            dist = snap["right_mm"] if outer_side == "right" else snap["left_mm"]
-            sign = +1 if outer_side == "right" else -1
-            u, info = pid.update_single(dist, WALL_TARGET_MM, sign)
-            if info["valid"]:
-                servo.steer_delta(u, channel=0)
-                return (f"{outer_side}={dist}->{info['wall_f']:.0f} "
-                        f"tgt={WALL_TARGET_MM:.0f} e={info['error']:.0f} u={u:.0f}",
-                        info["wall_f"])
-            servo.center_steering()
-            return f"{outer_side}={dist} INVALID->center", None
+        def finish(elapsed, reason):
+            mean = scale_sum / scale_n if scale_n else 1.0
+            if assist and mean < 0.995:
+                reason = f"{reason}; wall eased x{mean:.2f}"
+                if why_wall:
+                    reason = f"{reason} [{why_wall}]"
+            if pillar_note:
+                reason = f"{reason}; {pillar_note}"
+            return elapsed, reason, mean, bias
 
-        # center (difference) mode: before direction is locked, or by config.
-        # The PID steers on the L/R difference (stay in the middle), but the
-        # corner fallback still needs the OUTER wall distance -- hand it back here
-        # so corner detection is independent of the steering mode. Before the
-        # lock, outer_side is None and no distance is forwarded (no fallback yet).
+        # Scaled to THIS profile: an absolute floor longer than the whole hold
+        # deletes the check. See TURN_MIN_TIME_FRAC.
+        min_t = min(B.TURN_MIN_TIME_S, B.TURN_MIN_TIME_FRAC * max_s)
+
+        while True:
+            if button_pressed():
+                return None, None, 1.0, 0.0
+            elapsed = time.monotonic() - start
+            over = elapsed - max_s
+            if over >= 0.0:
+                snap_x = sensors.snapshot()
+                near = [d for d in (valid_tof(snap_x.get("left_mm")),
+                                    valid_tof(snap_x.get("right_front_mm")))
+                        if d is not None and d <= B.TURN_EXTEND_MIN_SIDE_MM]
+                may_extend = (B.TURN_CLOSED_LOOP and B.TURN_EXTEND_MAX_S > 0
+                              and over < B.TURN_EXTEND_MAX_S
+                              and not near
+                              and turn_complete(snap_x) is False)
+                if not may_extend:
+                    return finish(elapsed, f"timed {max_s:.1f}s"
+                                  + (f" +{over:.1f}s not round" if over >= 0.05
+                                     else ""))
+
+            # The parallel test runs FIRST every iteration, so the camera work
+            # below can only delay it by one loop period -- never skip it.
+            if B.TURN_CLOSED_LOOP and elapsed >= min_t:
+                aligned = aligned + 1 if turn_complete(sensors.snapshot()) is True else 0
+                if aligned >= B.TURN_DONE_HOLD_FRAMES:
+                    return finish(elapsed, "sensors: parallel")
+
+            now = time.monotonic()
+            if (assist or pillar_on) and now >= next_wall:
+                next_wall = now + 1.0 / TURN_WALL_HZ
+                tick += 1
+                frames = read_frames()          # ONE read, shared by both
+
+                if pillar_on and tick % B.TURN_PILLAR_EVERY == 0:
+                    scratch = Percept()
+                    perception.pillar_update(frames, scratch, force=True)
+                    # A turn is a committed arc; the pillar gets a smaller
+                    # share of it than it does on a straight.
+                    new_bias = max(-B.TURN_PILLAR_BIAS_LIMIT_US,
+                                   min(B.TURN_PILLAR_BIAS_LIMIT_US,
+                                       B.pillar_bias(scratch)))
+                    if new_bias != bias:
+                        bias = new_bias
+                        pillar_note = (f"pillar {scratch.pillar_color} "
+                                       f"{bias:+.0f}us" if bias else "")
+
+                wname, wconf = perception.wall_only(frames) if assist else (None, 0.0)
+                snap = sensors.snapshot()
+                new_scale, why = B.turn_wall_scale(
+                    turn_dir, wname, wconf,
+                    valid_tof(snap.get("left_mm")),
+                    valid_tof(snap.get("right_front_mm")),
+                    prev=scale)
+                scale_sum += new_scale
+                scale_n += 1
+                if why:
+                    why_wall = why
+                scale = new_scale
+                cap = max(B.TURN_STEER_US, abs(base_steer))
+                want = max(-cap, min(cap, base_steer * scale + bias))
+                if abs(want - last_cmd) >= 1.0:
+                    last_cmd = want
+                    servo.steer_delta(want, channel=0)
+            time.sleep(0.005 if (assist or pillar_on) else 0.01)
+
+    def sides_fresh(snap) -> bool:
+        """Has the side pair actually been updated recently? (see SIDE_MAX_AGE_S)
+
+        A frozen reading is indistinguishable from a real one by value alone --
+        L=480 R=486 held for six frames looked like a perfectly centred car.
+        """
+        age = snap.get("lr_age_s")
+        return age is None or age <= SIDE_MAX_AGE_S
+
+    def wall_follow_steer(snap):
+        """The ToF answer to 'how much'. Centre mode needs no direction."""
+        fresh = sides_fresh(snap)
+        left = valid_tof(snap.get("left_mm"))
+        right = valid_tof(snap.get("right_front_mm"))
+        rear = valid_tof(snap.get("right_rear_mm"))
+        outer = race.outer_wall
         outer_dist = None
-        if outer_side is not None:
-            od = snap["right_mm"] if outer_side == "right" else snap["left_mm"]
-            if 0 < od <= 2000:
-                outer_dist = float(od)
+        if outer is not None:
+            od = right if outer == "right" else left
+            if od:
+                outer_dist = od
+        if not fresh:
+            return pid.last_command(), outer_dist
+        if WALL_FOLLOW_MODE == "center" or outer is None:
+            if left is None or right is None:
+                return None, outer_dist
+            # rf = right_FRONT (already `right`), rr = right_rear.
+            u, info = pid.update(left, right, right, rear)
+            return (u if info.get("valid") else None), outer_dist
+        u, info = hwf.update(right, rear)
+        if not info.get("valid"):
+            return None, outer_dist
+        return u, (info["rf"] if outer == "right" else outer_dist)
 
-        u, info = pid.update(snap["left_mm"], snap["right_mm"])
-        if info["valid"]:
-            servo.steer_delta(u, channel=0)
-            return (f"L={snap['left_mm']}->{info['left_f']:.0f} "
-                    f"R={snap['right_mm']}->{info['right_f']:.0f} "
-                    f"e={info['error']:.0f} u={u:.0f} [center]", outer_dist)
-        servo.center_steering()
-        return f"L={snap['left_mm']} R={snap['right_mm']} INVALID->center", outer_dist
+    # Diagnostics for the two silent failure modes. Both were invisible in the
+    # logs: a frozen side pair looked like a centred car, and an uncalibrated
+    # heading term looks exactly like no heading term at all.
+    diag = {"stale_run": 0, "stale_total": 0, "stale_worst": 0,
+            "offset_announced": False,
+            "front_run": 0, "front_total": 0, "front_worst": 0,
+            "front_announced": False,
+            "front_close_run": 0}
 
+    def note_front(p):
+        """How long has the front matrix been saying nothing? (see diag)"""
+        if p.front_mm is not None:
+            if diag["front_run"] >= B.CORNER_FRONT_DEAD_FRAMES:
+                print(f"    [front] back after {diag['front_run']} dead frames")
+            diag["front_run"] = 0
+            return
+        diag["front_run"] += 1
+        diag["front_total"] += 1
+        diag["front_worst"] = max(diag["front_worst"], diag["front_run"])
+        # Announce the crossing ONCE per outage, at the point where the corner
+        # logic stops waiting for the front and lets the classifier commit
+        # unaided -- that is the moment the run changes character.
+        if diag["front_run"] == B.CORNER_FRONT_DEAD_FRAMES:
+            print(f"    [front] MATRIX DEAD for "
+                  f"{B.CORNER_FRONT_DEAD_FRAMES} frames -- corners now commit "
+                  f"on the classifier alone")
+
+    def note_sides(snap):
+        if sides_fresh(snap):
+            if diag["stale_run"] >= 3:
+                print(f"    [sides] {diag['stale_run']} frames of STALE L/R "
+                      f"(held steering through it)")
+            diag["stale_run"] = 0
+        else:
+            diag["stale_run"] += 1
+            diag["stale_total"] += 1
+            diag["stale_worst"] = max(diag["stale_worst"], diag["stale_run"])
+        if not diag["offset_announced"] and (off := pid.rr_offset_estimate()):
+            diag["offset_announced"] = True
+            print(f"*** heading term LIVE: learned RF-RR offset = {off:+.0f}mm "
+                  f"(kh={PID_KH}) ***")
+
+    stuck = StuckDetector()
     aborted = False
-    corners_done = 0
-    confirm = 0
-    both_seen = False        # latched: both lines seen during this approach
-    latched_turn = None      # turn side captured when both lines were visible
-    outer_low_frames = 0     # consecutive frames the followed wall was collapsed
-    sensor_armed = False     # re-armed once the outer wall recedes past re-arm mm
-    front_win_frames = 0     # consecutive FRESH front frames inside the fire window
-    front_near_frames = 0    # consecutive FRESH front frames below the crash floor
-    front_armed = False      # armed once the barrier was far/absent
-    prev_front_time = 0.0    # last front reading timestamp processed (debounce)
-    prelock_frames = 0       # consecutive pre-lock geometry-corner frames (corner 1)
-    cam_left_votes = 0       # both-lines frames whose nearest line -> LEFT (corner 1)
-    cam_right_votes = 0      # both-lines frames whose nearest line -> RIGHT (corner 1)
-    # track turn direction: locked at the first corner (auto) or preset (config).
-    track_dir = None if AUTO_LOCK_DIRECTION else default_direction()
-    last_dbg = 0.0
-    dbg_interval = 1.0 / DEBUG_PRINT_HZ if DEBUG_PRINT_HZ > 0 else 0.0
-
-    def camera_dir_vote(left_votes, right_votes):
-        """Corner-1 turn direction from the CAMERA vote ONLY (WRO requires the car
-        to auto-detect direction -- no preset/operator input allowed). Returns
-        "left"/"right" once a confident vote exists, else None (= undecided, wait)."""
-        total = left_votes + right_votes
-        if total < CAM_DIR_MIN_VOTES:
-            return None
-        if left_votes >= right_votes and left_votes >= CAM_DIR_CONFIDENCE * total:
-            return "left"
-        if right_votes > left_votes and right_votes >= CAM_DIR_CONFIDENCE * total:
-            return "right"
-        return None
-
-    def emergency_dir(snap, right_in_front):
-        """Last-resort direction if the wall is an emergency distance away and the
-        camera STILL has not decided (rare). Sensor-only (no preset), so still
-        'auto'. RF collapsed -> right wall ahead -> turn left; L collapsed -> turn
-        right; else turn toward the more-open side."""
-        rf = snap.get("right_front_mm", -1)
-        lf = snap.get("left_mm", -1)
-        if right_in_front or (0 < rf < 130):
-            return "left"
-        if 0 < lf < 130:
-            return "right"
-        # turn toward whichever side reads farther (the open / inner side)
-        return "left" if (lf > rf) else "right"
-
     try:
-        # SAFETY: force the motor into a stopped/safe state BEFORE waiting for the
-        # Start button. WRO rules forbid any motion before the judge says "Go" and
-        # the single Start button is pressed; the car may have powered on with the
-        # STM32 in an unknown state, so we pulse STOP (survives a dropped frame on
-        # the shared bus) and center the steering first. Nothing below moves the
-        # car until wait_for_button_press() returns.
-        motor_pulse(motor_stop)
-        servo.center_steering()
-        logger.info("Initial safe state: motor STOPPED, steering centered.")
-
-        logger.info("Ready. %d lap(s) = %d corners. PID=%s.",
-                    NUM_LAPS, TOTAL_CORNERS, "ON" if ENABLE_PID else "OFF")
-        logger.info("WAITING for Start button (press to START)...")
-        wait_for_button_press()
-        logger.info("Start button PRESSED -> START. Round/challenge started.")
-
-        # Warm up the camera + detector BEFORE moving: pull frames so the auto-
-        # exposure settles and YOLO's slow first inference is done. Otherwise
-        # corner 1 (which can be <1 m away at a close start zone) is read from cold,
-        # dark frames, the camera misses the corner lines, and there is no direction
-        # vote in time -> wrong/last-resort turn. This is what made CW corner 1 fail.
+        print("Warming up cameras + models ...")
+        t0 = time.monotonic()
         for _ in range(15):
-            ret, wf = cap.read()
-            if ret:
-                detector.detect(wf)
-            time.sleep(0.02)
+            f = read_frames()
+            if f:
+                perception.update(f, Percept())
+        print(f"warm-up done in {time.monotonic() - t0:.1f}s")
+
+        print(f"v7 ready. DRY_RUN={DRY_RUN}. Press the button to START...")
+        wait_for_button_press()
+        print("START")
 
         servo.center_steering()
         pid.reset()
         hwf.reset()
-        # Start FORWARD with no reverse twitch. On this firmware a set-speed frame
-        # spins the motor in its idle direction (REVERSE) the instant it lands, so
-        # setting speed first makes the car lurch backwards before forward arrives.
-        # Fix: send FORWARD first to fix the direction, then interleave set-speed
-        # with forward so a forward frame immediately follows every speed frame --
-        # the motor never sits in reverse. Repeats also cover any dropped frame.
-        motor_forward()
+        _motor(motor.forward_continuous)
         for _ in range(4):
-            motor_set_speed(MOTOR_SPEED_PCT)
-            motor_forward()
+            motor_go(CRUISE_SPEED_PCT)
             time.sleep(0.04)
-        logger.info("Motor speed set to %d%% -- vehicle moving.", MOTOR_SPEED_PCT)
-        motor_forward()
+        speed_now = CRUISE_SPEED_PCT
+        # Motor going -> safe to turn the front matrix on. It stays off through
+        # the start pulses so its scan cannot eat a start frame on the shared bus.
+        sensors.set_front_enabled(True)
 
-        # Motor is going -> safe to turn the front matrix on now (kept off through
-        # the start pulses so its scan can't eat the start frame on the shared
-        # bus). This gives corner 1 the early front trigger / pre-lock fallback.
-        if FRONT_ENABLE_FROM_START and sensors is not None:
-            sensors.set_front_enabled(True)
+        last_dbg = 0.0
+        dbg_interval = 1.0 / DEBUG_HZ if DEBUG_HZ > 0 else 0.0
+        loop_hz, last_t = 0.0, 0.0
 
-        # ---- STRAIGHT state ----
-        while corners_done < TOTAL_CORNERS:
-            ret, frame = cap.read()
-            if not ret:
+        while not race.finished:
+            frames = read_frames()
+            if not frames:
                 continue
-
             if button_pressed():
                 aborted = True
                 break
 
-            result = detector.detect(frame)
-            steer_info, outer_dist = steer_straight(outer_for(track_dir))
-
-            # --- Robust corner trigger (tolerant of flicker) ---
-            # Latch "lines seen" + the turn side while they are visible. Before
-            # the direction is locked we require BOTH colored lines (to pick the
-            # side safely); after the lock a single close-enough line is enough.
-            detected = result["detected"]
-            close = result["distance_norm"]
-            close_ok = detected and close is not None and close >= TRIGGER_CLOSENESS
-
-            require_both = REQUIRE_BOTH_LINES and not (
-                RELAX_BOTH_LINES_AFTER_LOCK and track_dir is not None)
-
-            if detected and result["turn"] is not None:
-                if both_lines_present(result) or not require_both:
-                    both_seen = True
-                    latched_turn = result["turn"]
-                # Camera direction VOTE (corner 1 only -- WRO requires auto-detect).
-                # A vote is trustworthy when the line we're reading is genuinely the
-                # NEAR one: either BOTH lines are present (the lower one wins), OR a
-                # single line is CLOSE (high closeness = it's the near line, so its
-                # color is reliable). A lone FAR line (low closeness) is the
-                # ambiguous case that inverted before -- those we still ignore.
-                vote_ok = both_lines_present(result) or (
-                    close is not None and close >= CAM_DIR_LONE_CLOSE)
-                if track_dir is None and vote_ok:
-                    if result["turn"] == "left":
-                        cam_left_votes += 1
-                    elif result["turn"] == "right":
-                        cam_right_votes += 1
-
-            # Accumulate confirm while close + lines already seen; only reset when
-            # the corner leaves view entirely (so a one-frame flicker is OK).
-            if both_seen and close_ok:
-                confirm += 1
-            elif not detected:
-                confirm = 0
-
-            # --- Sensor corner fallback (plan A) ---
-            # After the direction is locked, the followed outer wall collapsing
-            # below SENSOR_CORNER_MM means we are at the corner; turn even if the
-            # camera missed it, so the car never drives into the outer wall. The
-            # trigger only fires once re-armed (wall receded past SENSOR_REARM_MM
-            # since the last corner) so the post-turn recovery dip can't fire it.
-            sensor_corner = False
-            if (ENABLE_SENSOR_CORNER and track_dir is not None
-                    and outer_dist is not None):
-                if outer_dist >= SENSOR_REARM_MM:
-                    sensor_armed = True
-                if outer_dist < SENSOR_CORNER_MM:
-                    outer_low_frames += 1
-                else:
-                    outer_low_frames = 0
-                if sensor_armed and outer_low_frames >= SENSOR_CORNER_FRAMES:
-                    sensor_corner = True
-            else:
-                outer_low_frames = 0
-
-            # --- Front-barrier corner trigger (VL53L8CX 4x4 matrix) ---
-            # Matrix-aware: ARM while the barrier is far/absent (front INVALID, or
-            # valid >= FRONT_ARM_MM), then FIRE when row-1 closes into the window
-            # [FRONT_MIN_TRUST_MM, FRONT_CORNER_MM] (~95cm down to the ~50cm flake
-            # floor). The barrier jumps straight from invalid to ~954 mm, so
-            # arming on "far/absent" (not on a big number) is what lets the very
-            # first frames count. Stepped only on a FRESH reading. Only after lock.
-            front_corner = False
-            front_dist = None
-            front_cells = 0
-            if (ENABLE_FRONT_CORNER and track_dir is not None
-                    and sensors is not None):
-                fsnap = sensors.snapshot()
-                front_valid = fsnap["front_valid"]
-                front_cells = fsnap.get("front_cells", 0)
-                front_dist = fsnap["front_mm"] if front_valid else None
-                if fsnap["front_last_time"] != prev_front_time:
-                    prev_front_time = fsnap["front_last_time"]
-                    fd = fsnap["front_mm"]
-                    if (not front_valid) or fd >= FRONT_ARM_MM:
-                        front_armed = True
-                    # FIRE only on a barrier seen by >= FRONT_MIN_CELLS row-1
-                    # cells: a lone in-band cell among open cells is an edge/wall
-                    # corner, not the barrier face (turns too soon).
-                    in_window = (front_valid
-                                 and FRONT_MIN_TRUST_MM <= fd <= FRONT_CORNER_MM
-                                 and front_cells >= FRONT_MIN_CELLS)
-                    if front_armed and in_window:
-                        front_win_frames += 1
-                    elif not in_window:
-                        front_win_frames = 0
-                    # Crash failsafe count: barrier dangerously close (below the
-                    # window) and still no turn -> count toward an emergency turn.
-                    if front_valid and 0 < fd <= FRONT_EMERGENCY_MM:
-                        front_near_frames += 1
-                    else:
-                        front_near_frames = 0
-                if front_armed and front_win_frames >= FRONT_CORNER_FRAMES:
-                    front_corner = True
-                if front_near_frames >= FRONT_EMERGENCY_FRAMES:
-                    front_corner = True          # failsafe: turn or crash
-            else:
-                front_win_frames = 0
-                front_near_frames = 0
-
-            # --- Pre-lock corner detection (corner 1 only) ---
-            # Before the direction locks, the camera is the ONLY trigger and it
-            # needs both colored lines; a bad start zone misses them and drives
-            # into the wall. Here we detect the corner from geometry AND infer the
-            # turn direction (the camera normally supplies it). Active only while
-            # track_dir is None, so it never interferes with corners 2..12.
-            prelock_corner = False
-            right_in_front = False   # right (outer) wall wrapped ahead -> implies LEFT
-            if (ENABLE_PRELOCK_CORNER and track_dir is None
-                    and sensors is not None):
-                psnap = sensors.snapshot()
-                p_rf = (psnap["right_front_mm"]
-                        if psnap["right_front_valid"] else None)
-                p_rr = (psnap["right_rear_mm"]
-                        if psnap["right_rear_valid"] else None)
-                p_front_valid = psnap["front_valid"]
-                p_front = psnap["front_mm"] if p_front_valid else None
-                p_cells = psnap.get("front_cells", 0)
-
-                # (a) a wall/barrier is ahead -> a corner is here.
-                front_ahead = (p_front_valid
-                               and FRONT_MIN_TRUST_MM <= p_front <= FRONT_CORNER_MM
-                               and p_cells >= FRONT_MIN_CELLS)
-                # (b) right nose-in: RF collapsed AND well below RR -> the outer
-                #     wall wrapped in front of the right side at an ANGLE.
-                right_nosein = (p_rf is not None and p_rr is not None
-                                and p_rf < PRELOCK_NOSEIN_MM
-                                and (p_rr - p_rf) >= PRELOCK_NOSEIN_GAP_MM)
-                # (c) right hard-collapse: RF very low regardless of the gap -> the
-                #     car reached the corner PARALLEL to the outer wall (zone 3),
-                #     so RF and RR drop together and (b) never fires.
-                right_hard = p_rf is not None and p_rf < PRELOCK_RF_HARD_MM
-                right_corner = right_nosein or right_hard
-
-                if front_ahead or right_corner:
-                    prelock_frames += 1
-                else:
-                    prelock_frames = 0
-
-                if prelock_frames >= PRELOCK_CORNER_FRAMES:
-                    prelock_corner = True
-                    # The DIRECTION is decided by resolve_first_corner_dir() at the
-                    # lock below. We only forward the geometry fact it needs: a right
-                    # nose-in / hard-collapse means the RIGHT (outer) wall wrapped in
-                    # front -> a LEFT turn, REGARDLESS of lateral position (it's a
-                    # front-vs-rear comparison on the outer wall). Raw side distance
-                    # is NOT used to pick the side -- hugging the inner wall makes the
-                    # inner side read small, which would invert the guess.
-                    right_in_front = right_corner
-            else:
-                prelock_frames = 0
-
             now = time.monotonic()
-            if dbg_interval and now - last_dbg >= dbg_interval:
-                last_dbg = now
-                close_s = f"{close:.2f}" if close is not None else "-"
-                ssnap = sensors.snapshot() if sensors is not None else {}
-                # Before the lock the front block above is skipped, so fall back to
-                # the live snapshot here -> front is visible during pre-lock too.
-                if front_dist is not None:
-                    front_s = f"{front_dist}"
-                elif ssnap and ssnap.get("front_valid"):
-                    front_s = f"{ssnap['front_mm']}"
-                    front_cells = ssnap.get("front_cells", 0)
-                else:
-                    front_s = "-"
-                sides_s = (f"L={ssnap.get('left_mm')} "
-                           f"RF={ssnap.get('right_front_mm')} "
-                           f"RR={ssnap.get('right_rear_mm')}") if ssnap else "-"
-                logger.debug(
-                      "[WATCH] both=%s seen=%s near=%s close=%s latch=%s dir=%s "
-                      "confirm=%d/%d low=%d/%d arm=%d front=%s(%dc) "
-                      "fwin=%d/%d fnear=%d/%d farm=%d pre=%d/%d "
-                      "votes(L=%d/R=%d) [%s] corners=%d/%d | %s",
-                      both_lines_present(result), both_seen,
-                      result['nearest_color'], close_s, latched_turn, track_dir,
-                      confirm, CONFIRM_FRAMES,
-                      outer_low_frames, SENSOR_CORNER_FRAMES, int(sensor_armed),
-                      front_s, front_cells,
-                      front_win_frames, FRONT_CORNER_FRAMES,
-                      front_near_frames, FRONT_EMERGENCY_FRAMES, int(front_armed),
-                      prelock_frames, PRELOCK_CORNER_FRAMES,
-                      cam_left_votes, cam_right_votes, sides_s,
-                      corners_done, TOTAL_CORNERS, steer_info)
-                if DEBUG_FRONT_MATRIX and sensors is not None:
-                    rows = sensors.snapshot()["front_matrix"]
-                    if rows:
-                        cells = " / ".join(
-                            " ".join(f"{v:4d}" for v in r) for r in rows)
-                        logger.debug("        [FRONT 4x4] %s  (row%s->front_mm=%s)",
-                                     cells, FRONT_BARRIER_ROW, front_s)
+            if last_t:
+                dt = now - last_t
+                if dt > 0:
+                    loop_hz = 0.9 * loop_hz + 0.1 / dt if loop_hz else 1.0 / dt
+            last_t = now
 
-            if can_show:
-                view = apply_color_tuning(frame, detector.color_params)
-                draw_result(view, result)
-                cv2.imshow("Challenge 01 v4 - corner + PID + VL53L8 front", view)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
+            percept = Percept()
+            sample = perception.update(frames, percept)
+            if sample is None:
+                continue
+            # Pillars run on the FULL frames, not the classifier composite --
+            # it is a detector, and 480x270 panes throw away the resolution the
+            # boxes need. No-op when PILLAR_PID_ENABLED is off.
+            seen_pillar = perception.pillar_update(frames, percept)
+
+            snap = sensors.snapshot()
+            percept.left_mm = valid_tof(snap.get("left_mm"))
+            percept.right_mm = valid_tof(snap.get("right_front_mm"))
+            percept.front_mm = (valid_tof(snap.get("front_mm"))
+                                if snap.get("front_valid") else None)
+            percept.finishing = race.finishing
+            percept.direction = race.direction
+
+            note_sides(snap)
+            u_pid, outer_dist = wall_follow_steer(snap)
+            fired = triggers.update(outer_dist, snap, race.direction is not None)
+            # See CLASS_BACKS_TRIGGER_FRAMES: a ToF trigger only counts when
+            # the classifier has recently agreed there is a corner here.
+            class_backs = (perception.frames_since_turn_class
+                           <= CLASS_BACKS_TRIGGER_FRAMES)
+            front_agrees = (percept.front_mm is None
+                            or 0 < percept.front_mm <= B.CORNER_FRONT_MM)
+            if (percept.front_mm is not None
+                    and 0 < percept.front_mm <= B.CORNER_FRONT_MM):
+                diag["front_close_run"] += 1
+            else:
+                diag["front_close_run"] = 0
+            front_backs = (diag["front_close_run"]
+                           >= B.FRONT_BACKS_TRIGGER_FRAMES)
+            percept.corner_trigger = (fired is not None
+                                      and race.can_count_corner()
+                                      and (class_backs or front_backs)
+                                      and front_agrees)
+
+            note_front(percept)
+            decision = behavior.update(percept)
+
+            if decision.note_pillar:
+                race.note_pillar(decision.note_pillar)
+
+            # --- steering ---
+            steer = decision.steer_us
+            if decision.owner in ("pid", "wall") and u_pid is not None:
+                if decision.owner == "pid":
+                    steer = u_pid
+                elif (u_pid > 0) == (steer > 0):
+                    steer = u_pid if abs(u_pid) > abs(steer) else steer
+
+            if decision.nudge_us:
+                lean = steer + decision.nudge_us
+                lean = max(-PID_OUT_LIMIT, min(PID_OUT_LIMIT, lean))
+                if steer > 0:
+                    lean = max(0.0, lean)
+                elif steer < 0:
+                    lean = min(0.0, lean)
+                steer = lean
+
+            bias = (0.0 if decision.state in (B.CORNER_TURN, B.EMERGENCY)
+                    else B.pillar_bias(percept))
+            bias_effect = 0.0
+            if bias:
+                before = steer
+                steer = max(-B.PILLAR_BIAS_CEILING_US,
+                            min(B.PILLAR_BIAS_CEILING_US, steer + bias))
+                bias_effect = steer - before
+
+            if decision.state == B.CORNER_TURN:
+                turn_dir = decision.turn or race.direction
+                # The classifier IS the direction observation -- a WRO loop turns
+                # the same way at every corner, so lock from the first one.
+                if race.direction is None and turn_dir in ("left", "right"):
+                    race.force_direction(turn_dir, "corner-1 classifier")
+                    print(f"*** direction LOCKED {turn_dir} "
+                          f"(outer wall = {race.outer_wall}) ***")
+                if decision.count_corner:
+                    if not race.count_corner(fired or "classifier"):
+                        print("    (corner debounced -- not turning again)")
+                        # cancelled, NOT finished: no turn was driven, so the
+                        # arm this commit spent has to go back. See
+                        # BehaviorManager.corner_turn_cancelled.
+                        behavior.corner_turn_cancelled()
+                        continue
+                    print(f"*** corner {race.corners_done}/{race.total_corners} "
+                          f"(lap {race.lap}) {turn_dir} "
+                          f"[{decision.reason}] ***")
+
+                if decision.speed_pct != speed_now:
+                    motor_go(decision.speed_pct)
+                    speed_now = decision.speed_pct
+                servo.steer_delta(steer, channel=0)
+                turned, why_end, wall_mean, end_bias = hold_turn(
+                    decision.turn_time_s or B.TURN_TIME_S, steer, turn_dir)
+                if turned is None:
                     aborted = True
                     break
+                print(f"    turn ended after {turned:.2f}s ({why_end})")
 
-            camera_corner = confirm >= CONFIRM_FRAMES and latched_turn is not None
-            if (not camera_corner and not sensor_corner and not front_corner
-                    and not prelock_corner):
+                if decision.drawback_us and decision.drawback_time_s:
+                    back = decision.drawback_us * wall_mean
+                    if B.DRAWBACK_SCALES_WITH_TIME:
+                        profile_s = decision.turn_time_s or B.TURN_TIME_S
+                        frac = turned / profile_s if profile_s > 0 else 1.0
+                        frac = max(B.DRAWBACK_TIME_FRAC_MIN,
+                                   min(B.DRAWBACK_TIME_FRAC_MAX, frac))
+                        back *= frac
+                    back = -back if steer > 0 else back
+                    if end_bias:
+                        merged = back + end_bias
+                        back = (max(0.0, min(back, merged)) if back > 0
+                                else min(0.0, max(back, merged)))
+                    servo.steer_delta(back, channel=0)
+                    if sleep_with_abort(decision.drawback_time_s):
+                        aborted = True
+                        break
+                servo.center_steering()
+                motor_go(CRUISE_SPEED_PCT)
+                speed_now = CRUISE_SPEED_PCT
+                pid.reset()
+                hwf.reset()
+                triggers.reset_after_corner()
+                behavior.corner_turn_finished()
                 continue
 
-            # ---- CORNER state (no detection, no PID) ----
-            # Lock the track direction on the FIRST corner, then reuse it for all.
-            # WRO: the car must AUTO-DETECT direction -> corner-1 direction comes
-            # ONLY from the camera vote. If a non-camera trigger (front/sensor/
-            # prelock) wants to fire but the camera has not decided yet, we do NOT
-            # guess -- we keep approaching so the camera can read the corner. Only an
-            # emergency (wall about to be hit) forces a sensor-only last-resort turn.
-            if track_dir is None:
-                cam_dir = camera_dir_vote(cam_left_votes, cam_right_votes)
-                if cam_dir is not None:
-                    track_dir, dir_src = cam_dir, (
-                        f"camera({cam_left_votes}L/{cam_right_votes}R)")
-                else:
-                    snap_now = sensors.snapshot() if sensors is not None else {}
-                    fd_now = (snap_now.get("front_mm", -1)
-                              if snap_now.get("front_valid") else -1)
-                    # Emergency = wall about to be hit ahead, OR the right wall has
-                    # already collapsed in front (so "keep approaching" would just
-                    # scrape it -- don't loop into the wall waiting for a vote).
-                    emergency = (0 < fd_now <= FRONT_EMERGENCY_MM) or right_in_front
-                    if not emergency:
-                        # camera undecided + not an emergency -> keep approaching so
-                        # the camera can vote; re-check next frame (do NOT turn).
-                        continue
-                    track_dir = emergency_dir(snap_now, right_in_front)
-                    dir_src = "EMERGENCY-sensor(no camera vote)"
-                logger.info("*** Track direction LOCKED: %s via %s "
-                            "(outer wall = %s sensor; votes L=%d/R=%d) ***",
-                            track_dir, dir_src, outer_for(track_dir),
-                            cam_left_votes, cam_right_votes)
-                # Direction known -> make sure the front matrix poll is on for the
-                # remaining corners (already on if FRONT_ENABLE_FROM_START).
-                if sensors is not None:
-                    sensors.set_front_enabled(True)
-            direction = track_dir
-            if camera_corner:
-                trigger = "camera"
-            elif prelock_corner:
-                trigger = "prelock(geom)"
-            elif front_corner:
-                trigger = f"front(<{FRONT_CORNER_MM:.0f})"
-            else:
-                trigger = f"sensor(outer<{SENSOR_CORNER_MM:.0f})"
-            lap = corners_done // CORNERS_PER_LAP + 1
-            logger.info("Corner %d/%d (lap %d)  turn -> %s  (via %s, latch=%s)",
-                        corners_done + 1, TOTAL_CORNERS, lap, direction,
-                        trigger, latched_turn)
+            wall_clamp = 0.0
+            if B.WALL_CLAMP_EVERY_PATH:
+                before_clamp = steer
+                steer, clamp_notes = B.constrain_toward_walls(
+                    steer, percept.left_mm, percept.right_mm)
+                wall_clamp = steer - before_clamp
 
-            servo.steer_delta(steer_us_for(direction), channel=0)
-            logger.info("  TURN %s (%.2fs)", direction.upper(), TURN_TIME_S)
-            if sleep_with_abort(TURN_TIME_S):
-                aborted = True
-                break
-            servo.center_steering()
+            if B.REVERSE_UNWEDGE and stuck.update(
+                    percept.left_mm, percept.right_mm,
+                    sides_fresh(snap), speed_now > 0):
+                print(f"    *** WEDGED on the {stuck.side} "
+                      f"(L={percept.left_mm} R={percept.right_mm}) -- "
+                      f"straighten, back until clear "
+                      f"(<={B.REVERSE_NUDGE_S:.2f}s), "
+                      f"restore steer={steer:+.0f} "
+                      f"[attempt {stuck.attempts}/{B.REVERSE_MAX_ATTEMPTS}] ***")
+                key = ("left_mm" if stuck.side == "left"
+                       else "right_front_mm")
 
-            corners_done += 1
-            confirm = 0
-            both_seen = False
-            latched_turn = None
-            outer_low_frames = 0
-            sensor_armed = False
-            front_win_frames = 0
-            front_near_frames = 0
-            front_armed = False
-            prelock_frames = 0
+                def _clear():
+                    d = valid_tof(sensors.snapshot().get(key))
+                    return d is not None and d >= B.REVERSE_CLEAR_MM
 
-            # Post-turn recovery: run the wall-follower (detection OFF) through the
-            # cooldown instead of coasting blind-straight. The now-calibrated
-            # follower straightens the car and pulls it back to the target lane
-            # BEFORE corner detection resumes, so a mis-aimed turn exit no longer
-            # fires a false corner on the new straight (zone-2 corner 3 -> inner
-            # wall). Reset filters first so the follower starts fresh on the new
-            # wall; do NOT reset after -- keep the lane state it just established.
-            pid.reset()
-            hwf.reset()
-            logger.info("  cooldown follow %.2fs (no detection)", CORNER_COOLDOWN_S)
-            cd_deadline = time.monotonic() + CORNER_COOLDOWN_S
-            while time.monotonic() < cd_deadline:
-                if button_pressed():
-                    aborted = True
-                    break
-                steer_straight(outer_for(track_dir))   # follower steers; no detect
-                time.sleep(0.01)
-            if aborted:
-                break
+                _st, backed = reverse_nudge(
+                    steer_now=steer,
+                    set_steer=lambda u: servo.steer_delta(u, channel=0),
+                    motor_stop=motor_stop,
+                    motor_reverse=motor_back,
+                    motor_forward=lambda: motor_go(decision.speed_pct),
+                    clear=_clear)
+                print(f"    ...backed {backed:.2f}s of "
+                      f"{B.REVERSE_NUDGE_S:.2f}s allowed")
+                speed_now = decision.speed_pct
+                stuck.clear()
+                # The car has MOVED since these last integrated. Carrying a
+                # derivative across a reversal is how a controller reacts to a
+                # jump it made itself.
+                pid.reset()
+                hwf.reset()
+                continue
 
-            # Do NOT force-arm the front here. Let it re-arm NATURALLY (in the front
-            # block) only once the road ahead is seen CLEAR -- front INVALID or
-            # >= FRONT_ARM_MM. A real next corner exits onto a clear straight (front
-            # starts >1400 -> arms -> fires on the approach ramp). A BAD/over-rotated
-            # exit leaves a wall ~480 mm dead ahead with no ramp; force-arming used
-            # to fire a false corner on it and turn the car into the INNER wall
-            # (lap-completing corner, both directions). Natural re-arm suppresses
-            # that false fire; the emergency failsafe still catches a genuine wall.
-            front_armed = False
+            servo.steer_delta(steer, channel=0)
 
-        # ---- Finish ----
-        if not aborted:
-            logger.info("All %d corners done. Finish straight %.2fs",
-                        TOTAL_CORNERS, FINISH_STRAIGHT_S)
-            servo.center_steering()
-            aborted = sleep_with_abort(FINISH_STRAIGHT_S)
+            want_speed = decision.speed_pct
+            if diag["stale_run"] >= B.BLIND_SLOW_FRAMES:
+                want_speed = min(want_speed, B.BLIND_SPEED_PCT)
+            if want_speed != speed_now:
+                motor_go(want_speed)
+                speed_now = want_speed
 
-        motor_pulse(motor_stop)              # pulse so the button always halts it
-        servo.center_steering()
-        if aborted:
-            logger.info("ABORTED. Motor stopped.")
-        else:
-            logger.info("DONE: laps completed. Motor stopped.")
+            if decision.state == B.FINISHING and race.finish_elapsed() >= FINISH_DRIVE_S:
+                race.mark_finished()
+
+            if dbg_interval and (now - last_dbg) >= dbg_interval:
+                last_dbg = now
+                print(f"[v7] {loop_hz:5.1f}hz {decision.state:<16} "
+                      f"own={decision.owner:<9} steer={steer:+7.1f} "
+                      f"spd={decision.speed_pct} | "
+                      + f"corner={percept.corner_class}"
+                      + f"({percept.corner_class_conf:.2f}"
+                      + ("" if percept.corner_class is None
+                         else ("" if B.BehaviorManager.locked_class(
+                                        percept.corner_class,
+                                        percept.direction) == percept.corner_class
+                               else ">>%s" % race.direction))
+                      + ") "
+                      f"wall={percept.wall_class}({percept.wall_conf:.2f}) "
+                      + (f"pillar={percept.pillar_color}"
+                         f"({bias_effect:+.0f}us"
+                         f"{'<-%+.0f' % bias if abs(bias_effect - bias) >= 1 else ''}"
+                         f"{'/placed' if percept.pillar_placed else ''}"
+                         + (f" s{perception.strip.sections(seen_pillar.strip_x):.1f}"
+                            f"->{B.PILLAR_PID_TARGET_SECTION[percept.pillar_color] + 0.5:.1f}"
+                            f" a={seen_pillar.area:.0f}"
+                            if seen_pillar is not None else "")
+                         + ") "
+                         if percept.pillar_color else "")
+                      + (f"clamp={wall_clamp:+.0f}us " if abs(wall_clamp) >= 1
+                         else "")
+                      + f"trig={fired}"
+                      + ("" if fired is None else
+                         ("" if percept.corner_trigger and class_backs
+                          else "(front)" if percept.corner_trigger
+                          else "(MUTED)"))
+                      + f" | L={percept.left_mm} R={percept.right_mm} "
+                      f"F={percept.front_mm} | {race.status()} "
+                      f"[{decision.reason}]")
+
+        if diag["front_total"]:
+            print("")
+            print(f"[front] {diag['front_total']} frames with NO front reading, "
+                  f"longest run {diag['front_worst']}. The front is the only "
+                  f"'you have arrived' signal a corner has; past "
+                  f"{B.CORNER_FRONT_DEAD_FRAMES} the classifier commits alone.")
+        if diag["stale_total"]:
+            print("")
+            print(f"[sides] {diag['stale_total']} stale L/R frames total, "
+                  f"longest run {diag['stale_worst']}. A long run means the "
+                  f"STM32 stopped answering, not that the car sat still.")
+        off = pid.rr_offset_estimate()
+        print(f"[heading] learned RF-RR offset: "
+              f"{'never calibrated' if off is None else f'{off:+.0f}mm'}")
 
     except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt: stopping.")
-        motor_pulse(motor_stop)
-
-    except Exception:
-        # Fatal: log the full traceback so an unattended systemd run leaves a
-        # diagnosable record, then re-raise so the unit exits non-zero (Restart=
-        # on-failure can act). The finally block still stops the motor first.
-        logger.exception("FATAL exception in main loop -- stopping motor.")
-        try:
-            motor_pulse(motor_stop)
-        except Exception:
-            logger.exception("Failed to stop motor during fatal handler.")
-        raise
-
+        aborted = True
     finally:
-        logger.info("Clean shutdown: stopping motor and releasing hardware.")
         try:
-            motor_pulse(motor_stop)
+            sensors.stop_reader()          # port stays open, thread stops
         except Exception:
-            logger.exception("Failed to stop motor during cleanup.")
+            pass
+        stopped = DRY_RUN
+        for attempt in range(MOTOR_STOP_TRIES):
+            if stopped:
+                break
+            try:
+                if motor_lock:
+                    with motor_lock:
+                        ack = motor.stop(timeout_s=MOTOR_STOP_TIMEOUT_S,
+                                         wait_response=True)
+                else:
+                    ack = motor.stop(timeout_s=MOTOR_STOP_TIMEOUT_S,
+                                     wait_response=True)
+                stopped = ack is not None   # None = no answer, NOT success
+            except Exception as exc:
+                print(f"    motor stop attempt {attempt + 1} raised: {exc}")
+            if not stopped:
+                time.sleep(0.05)
+        if not stopped:
+            # Nothing answered. Shout, and keep firing blind on the way out --
+            # an unacknowledged frame may still have landed.
+            print("!! MOTOR DID NOT ACKNOWLEDGE STOP AFTER "
+                  f"{MOTOR_STOP_TRIES} TRIES -- CUT POWER IF IT IS STILL "
+                  "MOVING")
+            for _ in range(MOTOR_STOP_TRIES):
+                try:
+                    _motor(motor.stop)
+                except Exception:
+                    pass
+                time.sleep(0.04)
         servo.center_steering()
         servo.close()
-        if sensors:
-            sensors.close()
+        sensors.close()
         if not shared:
             motor.close()
-        cap.release()
+        for cap in caps.values():
+            cap.release()
         cv2.destroyAllWindows()
         GPIO.cleanup()
-        logger.info("Cleaned up. Exit.")
+        print("ABORTED." if aborted else f"DONE. {race.status()}")
 
 
 if __name__ == "__main__":
-    # No direction argument: WRO requires the car to AUTO-DETECT the track
-    # direction at runtime from the camera (see camera_dir_vote / corner-1 lock).
-    # setup_logging() FIRST so even an init-time crash is captured with a
-    # traceback in logs/main.log (and stdout -> journalctl under systemd).
-    setup_logging()
-    try:
-        main()
-    except SystemExit:
-        raise
-    except Exception:
-        logger.exception("Unhandled exception at top level -- exiting.")
-        raise
+    main()

@@ -45,18 +45,6 @@ MAX_FRAME_LEN = 4096           # matrix frame is multi-line -> larger than sides
 # Front-matrix tuning (sensor-level; the corner THRESHOLDS live in main).
 FRONT_MAX_MM = 2500            # cells above this are "no barrier" / over-the-top
 FRONT_FLOOR_MM = 420          # cells BELOW this in row 1 are the floor, not the
-                              # barrier (rows 2-3 read ~130-260 mm; when the
-                              # barrier only partly fills row 1 the floor cells
-                              # bleed in and drag the median down -> a barrier at
-                              # ~70 cm misreads as ~220 mm and the turn fires far
-                              # too late). Excluding them makes front_mm track the
-                              # BARRIER even from a single in-row cell.
-                              # RAISED 350->420 for the TILTED sensor: the tilt
-                              # brings the floor into row 1 at ~266-314 mm, only
-                              # ~36 mm below the old 350 cutoff -> floor drift could
-                              # cross it and false-fire. 420 doubles the margin; the
-                              # wall still fires at FRONT_CORNER_MM(900) long before
-                              # 420, and sub-420 is covered by the RF<250 + emergency.
 FRONT_BARRIER_ROW = 1          # row 0 overshoots (>2500); row 1 == barrier
 FRONT_GOOD_STATUS = (5, 9)     # VL53L8CX: 5 valid, 9 ~valid (range OK)
 
@@ -245,11 +233,21 @@ class SideSensorsV3:
             self.rx_buffer.clear()
         self._paused = False
 
-    def close(self):
+    def stop_reader(self):
+        """Stop the background reader WITHOUT closing the port.
+
+        The motor shares this serial line. At shutdown its STOP command has to
+        reach the STM32, and a single frame onto a link this thread is still
+        polling is the easiest one to lose -- but closing the port first would
+        leave nowhere to send it. This quiets the bus and leaves it open.
+        """
         self._running = False
         if self._thread is not None:
             self._thread.join(timeout=0.5)
             self._thread = None
+
+    def close(self):
+        self.stop_reader()
         if self._own_serial and self.ser and self.ser.is_open:
             self.ser.close()
             print("[SideSensorsV3] closed serial")
